@@ -1,0 +1,57 @@
+site_name: Title of documentation page
+
+nav:
+  - index.md
+  - api.md
+  # specify the table of contents structure here
+
+repo_url: https://github.com/cdcent/cfa-mkdocs-template
+repo_name: repo
+
+# advanced configuration ------------------------------------------------------
+
+theme:
+  name: "material"
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            extra:
+              show_root_heading: true
+              show_full_root_path: true
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - mdx_truly_sane_lists
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: math
+          class: arithmatex
+          format:
+            !!python/object/apply:pymdownx.arithmatex.arithmatex_fenced_format {
+              kwds: { mode: generic, tag: div },
+            }
+
+extra_javascript:
+  - javascript/katex.js
+  - https://unpkg.com/katex@0/dist/katex.min.js
+  - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
+
+extra_css:
+  - https://unpkg.com/katex@0/dist/katex.min.css
