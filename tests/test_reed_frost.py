@@ -15,4 +15,4 @@ def test_pmf_2():
 
 def test_large_dist_warning():
     with pytest.raises(RuntimeWarning):
-        rf.dist_large(n=10, lmbda=0.5)
+        rf.dist_large(n=10, lambda_=0.5)

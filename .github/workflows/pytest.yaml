@@ -1,0 +1,23 @@
+name: Run pytest
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install poetry
+        shell: bash
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: poetry
+      - run: |
+          poetry install
+          poetry run pytest -v
+        shell: bash
