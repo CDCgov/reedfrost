@@ -6,7 +6,8 @@
 
 ## Getting started
 
-This is a [poetry](https://python-poetry.org/)-enabled Python project
+- This is a [poetry](https://python-poetry.org/)-enabled Python project
+- Documentation is built using [`mkdocs`](https://www.mkdocs.org/)
 
 ## Project admins
 
