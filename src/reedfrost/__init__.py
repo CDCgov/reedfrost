@@ -2,8 +2,9 @@ import functools
 import math
 
 import numpy as np
-import scipy.optimize
 import scipy.stats
+from scipy.optimize import brentq
+from scipy.special import factorial
 
 
 @functools.cache
@@ -27,7 +28,7 @@ def _gontcharoff(k: int, q: float, m: int) -> float:
     else:
         return 1.0 / math.factorial(k) - sum(
             [
-                q ** ((m + i) * (k - i)) / math.factorial(k - i) * _gontcharoff(i, q, m)
+                q ** ((m + i) * (k - i)) / factorial(k - i) * _gontcharoff(i, q, m)
                 for i in range(0, k)
             ]
         )
@@ -50,8 +51,8 @@ def pmf(k: int, n: int, p: float, m: int = 1) -> float:
     """
     q = 1.0 - p
     return (
-        math.factorial(n)
-        / math.factorial(n - k)
+        factorial(n)
+        / factorial(n - k)
         * q ** ((n - k) * (m + k))
         * _gontcharoff(k, q, m)
     )
@@ -76,7 +77,7 @@ def _theta_fun(w: float, lambda_: float) -> float:
 
     # do type checking here because type hinting gets confused about whether
     # this results a tuple or a float
-    result = scipy.optimize.brentq(f, 0.0, 1.0, full_output=False)
+    result = brentq(f, 0.0, 1.0, full_output=False)
     assert isinstance(result, float)
     return result
 
