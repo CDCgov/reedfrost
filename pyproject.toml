@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "reedfrost"
+version = "0.1.0"
+description = "Reed-Frost disease dynamics"
+authors = ["Scott Olesen <ulp7@cdc.gov>"]
+license = "Apache 2"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
