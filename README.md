@@ -2,12 +2,27 @@
 
 ## Overview
 
-[Reed-Frost](https://en.wikipedia.org/wiki/Reed%E2%80%93Frost_model) mathematical model of disease.
+This repo contains final size distributions for [Reed-Frost](https://en.wikipedia.org/wiki/Reed%E2%80%93Frost_model) outbreaks.
 
 ## Getting started
 
-- This is a [poetry](https://python-poetry.org/)-enabled Python project
-- Documentation is built using [`mkdocs`](https://www.mkdocs.org/)
+### Installation
+
+This is a [poetry](https://python-poetry.org/)-enabled Python project:
+
+1. Clone this repo locally.
+2. [Install poetry](https://python-poetry.org/docs/#installation).
+3. Install this package locally with `poetry install`.
+
+### App
+
+Run the [Streamlit](https://streamlit.io/) app locally: `poetry run streamlit run app.py`
+
+### Docs
+
+Read the [docs online](https://cdcgov.github.io/reedfrost/).
+
+Documentation is built using [`mkdocs`](https://www.mkdocs.org/). View the documentation locally with `poetry run mkdocs serve`.
 
 ## Project admins
 
