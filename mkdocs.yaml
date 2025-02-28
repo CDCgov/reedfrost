@@ -1,11 +1,11 @@
-site_name: Title of documentation page
+site_name: reedfrost
 
 nav:
   - index.md
+  - implementation.md
   - api.md
-  # specify the table of contents structure here
 
-repo_url: https://github.com/cdcent/cfa-mkdocs-template
+repo_url: https://github.com/cdcgov/reedfrost
 repo_name: repo
 
 # advanced configuration ------------------------------------------------------
