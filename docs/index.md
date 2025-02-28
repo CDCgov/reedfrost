@@ -33,7 +33,7 @@ In general, the Gontcharoff polynomials are (equation 2.1):
 ```math
 G_k(x | U) = \begin{cases}
   1 & k = 0 \\
-  \frac{x^k}{k!} - \sum_{i=0}^{k-1} \frac{u_i^{k-1}}{(k-i)!} G_i(x | U) & k > 0
+  \frac{x^k}{k!} - \sum_{i=0}^{k-1} \frac{u_i^{k-i}}{(k-i)!} G_i(x | U) & k > 0
 \end{cases}
 ```
 
@@ -42,6 +42,21 @@ Define $g(k, q, m) \equiv G_k(1 | q^{m+i}, i \in \mathbb{N})$ so that:
 ```math
 g(k, q, m) = \begin{cases}
   1 & k = 0 \\
-  \frac{1}{k!} - \sum_{i=0}^{k-1} q^{(m+i)(k-i)} g(i, q, m) & k > 0
+  \frac{1}{k!} - \sum_{i=0}^{k-1} \frac{q^{(m+i)(k-i)}}{(k-i)!} g(i, q, m) & k > 0
 \end{cases}
+```
+
+Further define $h(k, q, m) = k! \times g(k, q, m)$ such that:
+
+```math
+h(k, q, m) = \begin{cases}
+  1 & k = 0 \\
+  1 - \sum_{i=0}^{k-1} \binom{k}{i} q^{(m+i)(k-i)} h(i, q, m) & k > 0
+\end{cases}
+```
+
+and
+
+```math
+f(k; n, m, p) = \binom{n}{k} q^{(n-k)(m+k)} h(k, q, m)
 ```

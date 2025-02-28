@@ -1,18 +1,16 @@
 import functools
-import math
 
 import numpy as np
 import scipy.stats
 from numpy.typing import NDArray
 from scipy.optimize import brentq
-from scipy.special import factorial
+from scipy.special import comb
 
 
 @functools.cache
-def _gontcharoff1(k: int, q: float, m: int) -> float:
+def _kgontcharoff1(k: int, q: float, m: int) -> float:
     """
-    Gontcharoff polynomials, specific to the Lefevre & Picard
-    formulations of Reed-Frost final outbreak size pmf calculations
+    Gontcharoff polynomials times k!, for a single value of k
 
     See Lefevre & Picard 1990 (doi:10.2307/1427595) equation 2.1
 
@@ -27,20 +25,20 @@ def _gontcharoff1(k: int, q: float, m: int) -> float:
     if k == 0:
         return 1.0
     else:
-        return 1.0 / math.factorial(k) - sum(
+        return 1.0 - sum(
             [
-                q ** ((m + i) * (k - i)) / factorial(k - i) * _gontcharoff1(i, q, m)
+                comb(k, i) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
                 for i in range(0, k)
             ]
         )
 
 
-def _gontcharoff(
+def _kgontcharoff(
     k: int | NDArray[np.int64], q: float, m: int
 ) -> float | NDArray[np.float64]:
     """
     Gontcharoff polynomials, specific to the Lefevre & Picard
-    formulations of Reed-Frost final outbreak size pmf calculations
+    formulation, times k!
 
     See Lefevre & Picard 1990 (doi:10.2307/1427595) equation 2.1
 
@@ -53,9 +51,9 @@ def _gontcharoff(
         float, or float array: value of the polynomial
     """
     if isinstance(k, int):
-        return _gontcharoff1(k=k, q=q, m=m)
+        return _kgontcharoff1(k=k, q=q, m=m)
     else:
-        return np.array([_gontcharoff1(k=kk, q=q, m=m) for kk in k])
+        return np.array([_kgontcharoff1(k=kk, q=q, m=m) for kk in k])
 
 
 def pmf(
@@ -76,12 +74,8 @@ def pmf(
         float, or float array: pmf of the total infection distribution
     """
     q = 1.0 - p
-    return (
-        factorial(n)
-        / factorial(n - k)
-        * q ** ((n - k) * (m + k))
-        * _gontcharoff(k, q, m)
-    )
+
+    return comb(n, k) * q ** ((n - k) * (m + k)) * _kgontcharoff(k, q, m)
 
 
 def _theta_fun(w: float, lambda_: float) -> float:
