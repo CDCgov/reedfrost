@@ -1,0 +1,12 @@
+{
+    "https://rconnect.edav.cdc.gov/": {
+        "server_url": "https://rconnect.edav.cdc.gov/",
+        "filename": "/home/ulp7/proj/reedfrost",
+        "app_url": "https://rconnect.edav.cdc.gov/content/983dd5b8-d186-452c-b529-844f5f9a74ad/",
+        "app_id": "983dd5b8-d186-452c-b529-844f5f9a74ad",
+        "app_guid": "983dd5b8-d186-452c-b529-844f5f9a74ad",
+        "title": "reedfrost",
+        "app_mode": "python-streamlit",
+        "app_store_version": 1
+    }
+}

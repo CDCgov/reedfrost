@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "locale": "C.UTF-8",
+  "metadata": {
+    "appmode": "python-streamlit",
+    "entrypoint": "app"
+  },
+  "python": {
+    "version": "3.12.4",
+    "package_manager": {
+      "name": "pip",
+      "version": "25.0.1",
+      "package_file": "requirements.txt"
+    }
+  },
+  "files": {
+    "requirements.txt": {
+      "checksum": "52b74121c0769ff17a013b13b4f47890"
+    },
+    "LICENSE": {
+      "checksum": "86d3f3a95c324c9479bd8986968f4327"
+    },
+    "README.md": {
+      "checksum": "5f7354274807d08afe51cd2b529f2546"
+    },
+    "app.py": {
+      "checksum": "08f3440594fd939f701d31fa062dab17"
+    },
+    "docs/api.md": {
+      "checksum": "f423997475d87ce4c1fbe2b8e51d37a5"
+    },
+    "docs/implementation.md": {
+      "checksum": "b531b14f3079a00f64399b4b0a5751cd"
+    },
+    "docs/index.md": {
+      "checksum": "59e8a558b2fb09e86cbce083dff75a75"
+    },
+    "docs/javascript/katex.js": {
+      "checksum": "0d7ea6f22ec87becfb9602abbc41c4b6"
+    },
+    "mkdocs.yaml": {
+      "checksum": "02ef9c9efbceca2f2d5ce586672ae5b0"
+    },
+    "poetry.lock": {
+      "checksum": "1088f6e7abfa41799537db36f6243c65"
+    },
+    "pyproject.toml": {
+      "checksum": "fda227c1bb91f4c1c911082339105da6"
+    },
+    "src/reedfrost/__init__.py": {
+      "checksum": "55416f791df9b7dce75e856149d1ecac"
+    },
+    "src/reedfrost/__pycache__/__init__.cpython-312.pyc": {
+      "checksum": "0d3d769e6fd3db477635ea35004a90c1"
+    },
+    "src/reedfrost/__pycache__/__init__.cpython-313.pyc": {
+      "checksum": "0be47dc9ce7c2cf72074aee7b7651951"
+    }
+  }
+}
