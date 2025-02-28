@@ -6,8 +6,7 @@ import streamlit as st
 import reedfrost as rf
 
 
-def app():
-    st.title("Reed-Frost model")
+def main_tab():
     n_susceptible = st.slider(
         "No. initially susceptible", min_value=0, max_value=50, step=1, value=10
     )
@@ -38,6 +37,20 @@ def app():
         )
         .mark_bar()
     )
+
+
+def app():
+    st.title("Reed-Frost model")
+    tab1, tab2 = st.tabs(["App", "Model description"])
+
+    with tab1:
+        main_tab()
+
+    with tab2:
+        with open("docs/index.md") as f:
+            docs = f.read()
+
+        st.markdown(docs)
 
 
 if __name__ == "__main__":
