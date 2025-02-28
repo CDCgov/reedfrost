@@ -1,11 +1,10 @@
 import functools
-import math
 
 import numpy as np
 import scipy.stats
 from numpy.typing import NDArray
 from scipy.optimize import brentq
-from scipy.special import factorial
+from scipy.special import gamma, rgamma
 
 
 @functools.cache
@@ -27,9 +26,9 @@ def _gontcharoff1(k: int, q: float, m: int) -> float:
     if k == 0:
         return 1.0
     else:
-        return 1.0 / math.factorial(k) - sum(
+        return rgamma(k + 1) - sum(
             [
-                q ** ((m + i) * (k - i)) / factorial(k - i) * _gontcharoff1(i, q, m)
+                q ** ((m + i) * (k - i)) * rgamma(k - i + 1) * _gontcharoff1(i, q, m)
                 for i in range(0, k)
             ]
         )
@@ -76,9 +75,10 @@ def pmf(
         float, or float array: pmf of the total infection distribution
     """
     q = 1.0 - p
+
     return (
-        factorial(n)
-        / factorial(n - k)
+        gamma(n + 1)
+        * rgamma(n - k + 1)
         * q ** ((n - k) * (m + k))
         * _gontcharoff(k, q, m)
     )
