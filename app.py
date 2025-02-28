@@ -33,12 +33,7 @@ def app():
         alt.Chart(pl.DataFrame({"k": k, "dens": dens * 100}))
         .properties(title=f"R_eff={round(n_susceptible * p, 2)}")
         .encode(
-            alt.X(
-                "k:N",
-                title="Additional no. infected",
-                # scale=alt.Scale(domain=[0, n_susceptible]),
-                # axis=alt.Axis(tickMinStep=1),
-            ),
+            alt.X("k:N", title="Additional no. infected"),
             alt.Y("dens", title="Probability (%)"),
         )
         .mark_bar()
