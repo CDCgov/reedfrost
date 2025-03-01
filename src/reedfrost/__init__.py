@@ -60,9 +60,9 @@ def pmf(
     k: int | NDArray[np.int64], n: int, p: float, m: int = 1
 ) -> float | NDArray[np.float64]:
     """
-    Probability mass function for final size of a Reed-Frost outbreak
+    Probability mass function for final size of a Reed-Frost outbreak.
 
-    See Lefevre & Picard 1990 (doi:10.2307/1427595) equation 3.10
+    See Lefevre & Picard (1990) equation 3.10 for details.
 
     Args:
         k (int, or int array): number of total infections
@@ -105,7 +105,8 @@ def _theta_fun(w: float, lambda_: float) -> float:
 def pmf_large(
     k: int | NDArray[np.int64], n: int, lambda_: float, i_n: int = 1
 ) -> float | NDArray[np.float64]:
-    """Distribution of outbreak sizes, given a large outbreak
+    """Distribution of outbreak sizes of Reed-Frost outbreaks, conditioned on
+    the outbreak being large.
 
     See Barbour & Sergey 2004 (doi:10.1016/j.spa.2004.03.013) corollary 3.4
 
