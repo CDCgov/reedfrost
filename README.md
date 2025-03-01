@@ -16,7 +16,7 @@ This is a [poetry](https://python-poetry.org/)-enabled Python project:
 
 ### App
 
-Run the [Streamlit](https://streamlit.io/) app locally: `python -m reedfrost` or `poetry run streamlit run src/reedfrost/app.py`.
+Run the [Streamlit](https://streamlit.io/) app locally: `poetry run streamlit run src/reedfrost/app.py`.
 
 ### Docs
 
