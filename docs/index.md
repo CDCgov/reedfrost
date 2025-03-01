@@ -11,4 +11,4 @@ S_{t+1} &= S_t - I_{t+1}
 \end{align*}
 $$
 
-This repo calculates the distribution of the final sizes of outbreaks, that is, the total number of people infected beyond the initial infections.
+The `reedfrost` package and app calculate the distribution of the final sizes of outbreaks, that is, the total number of people infected beyond the initial infections.
