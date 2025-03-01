@@ -7,6 +7,6 @@ from streamlit.testing.v1 import AppTest
 )
 def test_app():
     # Cf. https://docs.streamlit.io/develop/api-reference/app-testing
-    at = AppTest.from_file("app.py")
+    at = AppTest.from_file("src/reedfrost/app.py")
     at.run()
     assert not at.exception
