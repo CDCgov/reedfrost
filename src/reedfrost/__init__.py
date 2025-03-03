@@ -25,10 +25,20 @@ def _kgontcharoff1(k: int, q: float, m: int) -> float:
     if k == 0:
         return 1.0
     else:
-        return 1.0 - sum(
-            float(comb(k, i)) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
-            for i in range(k)
+        value = 1.0 - sum(
+            [
+                comb(k, i) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
+                for i in range(0, k)
+            ]
         )
+        assert isinstance(value, float)
+
+        if value < 0.0:
+            raise RuntimeError(
+                f"Numerical instability: negative k!*Gontcharoff value {value} for {k=} {q=} {m=}"
+            )
+        else:
+            return value
 
 
 def _kgontcharoff(
