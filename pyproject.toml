@@ -17,6 +17,7 @@ polars = "^1.23.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
+rsconnect-python = "^1.25.2"
 
 
 [tool.poetry.group.mkdocs.dependencies]
