@@ -33,7 +33,7 @@ def _kgontcharoff1(k: int, q: float, m: int) -> float:
         )
         assert isinstance(value, float)
 
-        if value < 0.0:
+        if not (0.0 <= value and value <= 1.0):
             raise RuntimeError(
                 f"Numerical instability: negative k!*Gontcharoff value {value} for {k=} {q=} {m=}"
             )
