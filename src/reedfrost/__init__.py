@@ -1,89 +1,76 @@
 import functools
 
 import numpy as np
+import scipy.optimize
+import scipy.special
 import scipy.stats
 from numpy.typing import NDArray
-from scipy.optimize import brentq
-from scipy.special import binom
+
+
+def _pmf_binom(k: int, n: int, p: float) -> float:
+    """Binomial distribution pmf
+
+    This implementation is substantially faster than scipy.stats.binom.pmf
+
+    Args:
+        k (int): number of successes
+        n (int): number of trials
+        p (float): success probability
+
+    Returns:
+        float: probability mass
+    """
+    return scipy.special.binom(n, k) * p**k * (1.0 - p) ** (n - k)
 
 
 @functools.cache
-def _kgontcharoff1(k: int, q: float, m: int) -> float:
-    """
-    Gontcharoff polynomials times k!, for a single value of k
-
-    See Lefevre & Picard 1990 (doi:10.2307/1427595) equation 2.1
+def _pmf_s_inf(s_inf: int, s: int, i: int, p: float) -> float:
+    """Reed-Frost final size distribution, measured in terms of numbers of
+    susceptibles at infinite time
 
     Args:
-        k (int): degree
-        q (float): 1 - probability of "effective" contact
-        m (int): number of initial infected
+        s_inf (int): number of susceptibles when outbreak is over
+        s (int): initial number of susceptibles
+        i (int): initial number of infected
+        p (float): probability of infection
 
     Returns:
-        float: value of the polynomial
+        float: probability mass
     """
-    if k == 0:
+    if i == 0 and s_inf == s:
         return 1.0
+    elif i == 0 and s_inf != s:
+        return 0.0
+    elif s < s_inf:
+        return 0.0
     else:
-        value = 1.0 - sum(
-            [
-                binom(k, i) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
-                for i in range(0, k)
-            ]
+        return sum(
+            _pmf_binom(k=j, n=s, p=1.0 - (1.0 - p) ** i)
+            * _pmf_s_inf(s_inf=s_inf, s=s - j, i=j, p=p)
+            for j in range(s - s_inf + 1)
         )
-        assert isinstance(value, float)
-
-        if not (0.0 <= value and value <= 1.0):
-            raise RuntimeError(
-                f"Numerical instability: negative k!*Gontcharoff value {value} for {k=} {q=} {m=}"
-            )
-        else:
-            return value
-
-
-def _kgontcharoff(
-    k: int | NDArray[np.int64], q: float, m: int
-) -> float | NDArray[np.float64]:
-    """
-    Gontcharoff polynomials, specific to the Lefevre & Picard
-    formulation, times k!
-
-    See Lefevre & Picard 1990 (doi:10.2307/1427595) equation 2.1
-
-    Args:
-        k (int, or int array): degree
-        q (float): 1 - probability of "effective" contact
-        m (int): number of initial infected
-
-    Returns:
-        float, or float array: value of the polynomial
-    """
-    if isinstance(k, int):
-        return _kgontcharoff1(k=k, q=q, m=m)
-    else:
-        return np.array([_kgontcharoff1(k=kk, q=q, m=m) for kk in k])
 
 
 def pmf(
-    k: int | NDArray[np.int64], n: int, p: float, m: int = 1
-) -> float | NDArray[np.float64]:
-    """
-    Probability mass function for final size of a Reed-Frost outbreak.
-
-    See Lefevre & Picard (1990) equation 3.10 for details.
+    k: int | NDArray[np.integer], s: int, i: int, p: float
+) -> float | NDArray[np.floating]:
+    """Reed-Frost final size distribution
 
     Args:
-        k (int, or int array): number of total infections
-        n (int): initial number susceptible
-        m (int): initial number infected
-        p (float): probability of "effective contact" (i.e., infection)
+        k (int | NDArray[np.integer]): number of infections beyond the initial infections
+        s (int): initial number of susceptibles
+        i (int): initial number of infected
+        p (float): probability of infection
 
     Returns:
-        float, or float array: pmf of the total infection distribution
+        float | NDArray[np.floating]: probability mass
     """
-    q = 1.0 - p
-
-    return binom(n, k) * q ** ((n - k) * (m + k)) * _kgontcharoff(k, q, m)
+    if isinstance(k, (int, np.integer)):
+        return _pmf_s_inf(s_inf=s - k, s=s, i=i, p=p)
+    elif isinstance(k, np.ndarray):
+        return np.array([_pmf_s_inf(s_inf=s - kk, s=s, i=i, p=p) for kk in k])
+    else:
+        raise ValueError(f"Unknown type {type(k)}")
 
 
 def _theta_fun(w: float, lambda_: float) -> float:
@@ -105,7 +92,7 @@ def _theta_fun(w: float, lambda_: float) -> float:
 
     # do type checking here because type hinting gets confused about whether
     # this results a tuple or a float
-    result = brentq(f, 0.0, 1.0, full_output=False)
+    result = scipy.optimize.brentq(f, 0.0, 1.0, full_output=False)
     assert isinstance(result, float)
     return result
 

@@ -40,7 +40,7 @@ def app():
         )
 
     k = np.array(range(n_susceptible + 1))
-    dens = rf.pmf(k=k, n=n_susceptible, p=p, m=n_infected)
+    dens = rf.pmf(k=k, s=n_susceptible, i=n_infected, p=p)
 
     st.altair_chart(
         alt.Chart(pl.DataFrame({"k": k, "dens": dens * 100}))
