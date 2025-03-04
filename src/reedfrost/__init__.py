@@ -44,11 +44,19 @@ def _pmf_s_inf(s_inf: int, s: int, i: int, p: float) -> float:
     elif s < s_inf:
         return 0.0
     else:
-        return sum(
+        value = sum(
             _pmf_binom(k=j, n=s, p=1.0 - (1.0 - p) ** i)
             * _pmf_s_inf(s_inf=s_inf, s=s - j, i=j, p=p)
             for j in range(s - s_inf + 1)
         )
+
+        if 0.0 <= value and value <= 1.0:
+            return value
+        else:
+            raise RuntimeError(
+                f"Numerical instability for {s_inf=} {s=} {i=} {p=}: "
+                f"resulting pmf value is {value}"
+            )
 
 
 def pmf(
