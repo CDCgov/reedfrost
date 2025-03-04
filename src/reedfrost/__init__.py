@@ -26,10 +26,8 @@ def _kgontcharoff1(k: int, q: float, m: int) -> float:
         return 1.0
     else:
         return 1.0 - sum(
-            [
-                comb(k, i) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
-                for i in range(0, k)
-            ]
+            float(comb(k, i)) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
+            for i in range(k)
         )
 
 
