@@ -2,31 +2,46 @@ import functools
 
 import numpy as np
 import scipy.stats
+from numpy.polynomial.polynomial import Polynomial
 from numpy.typing import NDArray
 from scipy.optimize import brentq
 from scipy.special import comb
 
 
-@functools.cache
-def _kgontcharoff1(k: int, q: float, m: int) -> float:
+def _polynomial1(coef: float, power: int) -> Polynomial:
+    """Create a polynomial with a single power
+
+    Args:
+        coef (float): coefficient
+        power (int): power, must be >= 0
+
+    Returns:
+        Polynomial: coef*x^power
     """
-    Gontcharoff polynomials times k!, for a single value of k
+    assert power >= 0
+    return Polynomial([coef if i == power else 0.0 for i in range(power + 1)])
+
+
+@functools.cache
+def _kgontcharoff_polynomial(k, m) -> Polynomial:
+    """
+    Gontcharoff polynomial times k!, for a single value of k
 
     See Lefevre & Picard 1990 (doi:10.2307/1427595) equation 2.1
 
     Args:
         k (int): degree
-        q (float): 1 - probability of "effective" contact
         m (int): number of initial infected
 
     Returns:
-        float: value of the polynomial
+        float: Polynomial in q
     """
     if k == 0:
-        return 1.0
+        return Polynomial([1.0])
     else:
-        return 1.0 - sum(
-            float(comb(k, i)) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
+        return Polynomial([1.0]) - sum(
+            _polynomial1(scipy.special.binom(k, i), (m + i) * (k - i))
+            * _kgontcharoff_polynomial(i, m)
             for i in range(k)
         )
 
@@ -35,7 +50,7 @@ def _kgontcharoff(
     k: int | NDArray[np.int64], q: float, m: int
 ) -> float | NDArray[np.float64]:
     """
-    Gontcharoff polynomials, specific to the Lefevre & Picard
+    Value of Gontcharoff polynomials, specific to the Lefevre & Picard
     formulation, times k!
 
     See Lefevre & Picard 1990 (doi:10.2307/1427595) equation 2.1
@@ -49,9 +64,9 @@ def _kgontcharoff(
         float, or float array: value of the polynomial
     """
     if isinstance(k, int):
-        return _kgontcharoff1(k=k, q=q, m=m)
+        return float(_kgontcharoff_polynomial(k=k, m=m)(q))
     else:
-        return np.array([_kgontcharoff1(k=kk, q=q, m=m) for kk in k])
+        return np.array([float(_kgontcharoff_polynomial(k=kk, m=m)(q)) for kk in k])
 
 
 def pmf(
