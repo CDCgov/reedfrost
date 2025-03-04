@@ -4,7 +4,7 @@ import numpy as np
 import scipy.stats
 from numpy.typing import NDArray
 from scipy.optimize import brentq
-from scipy.special import comb
+from scipy.special import binom
 
 
 @functools.cache
@@ -27,7 +27,7 @@ def _kgontcharoff1(k: int, q: float, m: int) -> float:
     else:
         value = 1.0 - sum(
             [
-                comb(k, i) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
+                binom(k, i) * q ** ((m + i) * (k - i)) * _kgontcharoff1(i, q, m)
                 for i in range(0, k)
             ]
         )
@@ -83,7 +83,7 @@ def pmf(
     """
     q = 1.0 - p
 
-    return comb(n, k) * q ** ((n - k) * (m + k)) * _kgontcharoff(k, q, m)
+    return binom(n, k) * q ** ((n - k) * (m + k)) * _kgontcharoff(k, q, m)
 
 
 def _theta_fun(w: float, lambda_: float) -> float:
