@@ -6,24 +6,27 @@ The dynamic programming approach is more numerically stable but has $\mathcal{O}
 
 ## Dynamic programming approach
 
-The probability mass function $f$, in terms of the number $s_\infty$ of susceptibles who who remain at the end of the outbreak, is:
+Let $f_{S_\infty}(s_\infty; s, i, p)$ be the probability that the final number of susceptibles is $s_\infty$ given that the current state of the population is $S = s$, $I = i$, and the per-person infection probability is $p$.
+We can express this as a recursive relationship with boundary conditions, yielding
 
 ```math
 f_{S_\infty}(s_\infty; s, i, p) = \begin{cases}
   1 & i = 0 \text{ and } s_\infty = s \\
   0 & i = 0 \text{ and } s_\infty \neq s \\
-  0 & s < s_\infty \\
-  \sum_{j=0}^{s-s_\infty} f_\mathrm{binom}\left(j; s, 1-(1-p)^i\right) \times f_{S_\infty}(s_\infty; s-j, j, p) & \text{otherwise}
+  0 & i > 0 \text{ and } s < s_\infty \\
+  \sum_{j=0}^{s-s_\infty} \text{Pr}(j \mid s, i, p) \times f_{S_\infty}(s_\infty; s-j, j, p) & \text{otherwise}
 \end{cases}
 ```
+where $\text{Pr}(j \mid s, i, p)$ is the Reed-Frost transition probability mass function, $f_\mathrm{binom}\left(j; s, 1-(1-p)^i\right)$.
 
-where $s$ and $i$ are the starting numbers of susceptibles and infected and $p$ is the probability of infection. In other words:
+In other words:
+- If the outbreak is over:
+  - The current and final number of remaining susceptibles must be the same.
+- If the outbreak is not over,
+  - The current number of susceptibles cannot be smaller than the final number of susceptibles.
+  - For valid current sizes, we can compute the conditional final size probability given the current population state as a sum over the conditional final size probabilities given all states we can reach in one step times the probability of reaching that state in one step. This is akin to playing out the epidemic process, computing the probability as a chain of conditionals. However, writing it out this way allows us to start at the end and work backwards dynamically.
 
-- If the outbreak is over, the starting and ending number of remaining susceptibles must be the same.
-- There cannot be more ending susceptibles than starting susceptibles.
-- In other cases, note that we can advance one generation, allowing a number of infections between 0 and the maximum possible ($s - s_\infty$). The probability of ending at $s_\infty$ is the probability of each of those numbers of infections times the probability of going from that updated state to the final state.
-
-The probability mass function, in terms of the number $k$ of infections beyond the initial $i$, is:
+The probability mass function for the number $k$ of infections beyond the initial $I_0 = i$, is:
 
 ```math
 f(k; s, i, p) = f_{S_\infty}(s - k; s, i, p)
