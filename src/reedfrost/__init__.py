@@ -7,6 +7,7 @@ import scipy.stats
 from numpy.typing import NDArray
 
 
+@functools.cache
 def _pmf_binom(k: int, n: int, p: float) -> float:
     """Binomial distribution pmf
 
