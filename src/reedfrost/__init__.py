@@ -7,6 +7,26 @@ import scipy.stats
 from numpy.typing import NDArray
 
 
+@functools.cache
+def _rftp(i_next: int, s: int, i: int, p: float) -> float:
+    """Reed-Frost transition probability
+
+    Probability of there being i_next infections at the next step,
+    given there are currently s susceptibles, i infected, and the
+    infection probability is p.
+
+    Args:
+        i_next (int): next number of infected
+        s (int): current number of susceptibles
+        i (int): current number of infected
+        p (float): probability of infection
+
+    Returns:
+        float: probability mass
+    """
+    return _pmf_binom(k=i_next, n=s, p=1.0 - (1.0 - p) ** i)
+
+
 def _pmf_binom(k: int, n: int, p: float) -> float:
     """Binomial distribution pmf
 
@@ -45,8 +65,7 @@ def _pmf_s_inf(s_inf: int, s: int, i: int, p: float) -> float:
         return 0.0
     else:
         value = sum(
-            _pmf_binom(k=j, n=s, p=1.0 - (1.0 - p) ** i)
-            * _pmf_s_inf(s_inf=s_inf, s=s - j, i=j, p=p)
+            _rftp(i_next=j, s=s, i=i, p=p) * _pmf_s_inf(s_inf=s_inf, s=s - j, i=j, p=p)
             for j in range(s - s_inf + 1)
         )
 
