@@ -3,7 +3,6 @@ import numpy as np
 import numpy.random
 import polars as pl
 import streamlit as st
-from streamlit.delta_generator import DeltaGenerator
 
 import reedfrost as rf
 
@@ -50,6 +49,11 @@ def app():
             value=42,
         )
 
+        metric = st.segmented_control(
+            "Metric", options=["Cumulative", "Incident"], default="Cumulative"
+        )
+        assert metric is not None
+
         st.divider()
         st.header("Links")
 
@@ -58,40 +62,47 @@ def app():
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
-    tab1, tab2 = st.tabs(["Final size distribution", "Stochastic simulations"])
-
-    final_size_distribution(
-        c=tab1,
+    simulation_chart = simulations(
         n_susceptible=n_susceptible,
         n_infected=n_infected,
         p=p,
-    )
-
-    simulations(
-        c=tab2,
-        n_susceptible=n_susceptible,
-        n_infected=n_infected,
-        p=p,
+        metric=metric,
         n_simulations=n_simulations,
         seed=seed,
     )
 
+    match metric:
+        case "Incident":
+            st.altair_chart(simulation_chart)
+        case "Cumulative":
+            pmf_chart = final_size_distribution(
+                n_susceptible=n_susceptible,
+                n_infected=n_infected,
+                p=p,
+            )
 
-def final_size_distribution(
-    c: DeltaGenerator, n_susceptible: int, n_infected: int, p: float
-):
+            st.altair_chart(simulation_chart | pmf_chart)
+
+
+def final_size_distribution(n_susceptible: int, n_infected: int, p: float) -> alt.Chart:
     """Calculate and display the final size distribution"""
     # additional no. infected
     k = np.array(range(n_susceptible + 1))
     dens = rf.pmf(k=k, s=n_susceptible, i=n_infected, p=p)
 
-    c.altair_chart(
-        alt.Chart(pl.DataFrame({"total_infected": k + n_infected, "dens": dens * 100}))
+    data = pl.concat(
+        [
+            pl.DataFrame({"total_infected": k + n_infected, "dens": dens * 100}),
+            pl.DataFrame({"total_infected": range(n_infected), "dens": 0.0}),
+        ]
+    )
+
+    return (
+        alt.Chart(data)
         .properties(title="Final size distribution")
-        .configure_title(anchor="middle")
         .encode(
-            alt.X("total_infected:N", title="Total no. infected"),
-            alt.Y("dens", title="Probability (%)"),
+            alt.Y("total_infected:N", title="Total no. infected", sort="descending"),
+            alt.X("dens", title="Probability (%)"),
             tooltip=[
                 alt.Tooltip("total_infected:N", title="Total no. infected"),
                 alt.Tooltip("dens:Q", format=".1f", title="Probability (%)"),
@@ -102,17 +113,19 @@ def final_size_distribution(
 
 
 def simulations(
-    c: DeltaGenerator,
     n_susceptible: int,
     n_infected: int,
     p: float,
     n_simulations: int,
+    metric: str,
     seed: int,
     jitter: float = 0.1,
     opacity: float = 0.75,
     stroke_width: float = 1.0,
-):
+) -> alt.Chart:
     """Run and display stochastic simulations"""
+
+    assert metric in ["Incident", "Cumulative"]
 
     rng = numpy.random.default_rng(seed)
 
@@ -140,11 +153,6 @@ def simulations(
     last_gen = data.filter(pl.col("Incident") > 0).select(pl.col("t").max()).item()
     data = data.filter(pl.col("t") <= last_gen)
 
-    metric = c.segmented_control(
-        "Metric", options=["Incident", "Cumulative"], default="Cumulative"
-    )
-    assert metric is not None
-
     # keep track of y-axis limit
     max_y = data.select(pl.col(metric).max()).item() + 1
 
@@ -155,10 +163,9 @@ def simulations(
             + pl.Series("jitter", np.random.uniform(-jitter, jitter, data.shape[0]))
         )
 
-    c.altair_chart(
+    return (
         alt.Chart(data)
         .properties(title="Stochastic simulations")
-        .configure_title(anchor="middle")
         .encode(
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
