@@ -2,13 +2,13 @@ import altair as alt
 import numpy as np
 import numpy.random
 import polars as pl
+import polars.datatypes as pdt
 import streamlit as st
-from streamlit.delta_generator import DeltaGenerator
 
 import reedfrost as rf
 
 
-def app():
+def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
     st.title("Reed-Frost model")
 
     with st.sidebar:
@@ -16,39 +16,42 @@ def app():
         n_susceptible = st.slider(
             "No. initially susceptible", min_value=1, max_value=50, step=1, value=10
         )
-        n_infected = st.slider(
-            "No. initially infected", min_value=1, max_value=10, step=1, value=1
-        )
         reff = st.slider(
             "Effective reproduction number",
             min_value=0.0,
             max_value=min(5.0, float(n_susceptible)),
-            step=0.01,
-            format="%.2f",
+            step=0.1,
+            format="%.1f",
             value=min(1.5, float(n_susceptible)),
         )
 
-        if n_susceptible == 0:
-            p = 0.0
-        else:
-            p = reff / n_susceptible
-
-        st.header("Stochastic parameters")
-
-        n_simulations = st.slider(
-            "No. simulations",
-            min_value=5,
-            max_value=250,
-            step=1,
-            value=50,
+        metric = st.segmented_control(
+            "Infections metric",
+            options=["Cumulative", "Incident"],
+            default="Cumulative",
         )
-        seed = st.number_input(
-            "Random seed",
-            min_value=0,
-            max_value=2**32 - 1,
-            step=1,
-            value=42,
-        )
+        assert metric is not None
+
+        with st.expander("Advanced options", expanded=False):
+            n_infected = st.slider(
+                "No. initially infected", min_value=1, max_value=10, step=1, value=1
+            )
+
+            n_simulations = st.slider(
+                "No. simulations",
+                min_value=5,
+                max_value=250,
+                step=1,
+                value=50,
+            )
+
+            seed = st.number_input(
+                "Random seed",
+                min_value=0,
+                max_value=2**32 - 1,
+                step=1,
+                value=42,
+            )
 
         st.divider()
         st.header("Links")
@@ -58,116 +61,197 @@ def app():
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
-    tab1, tab2 = st.tabs(["Final size distribution", "Stochastic simulations"])
+    # derived parameters
+    if n_susceptible == 0:
+        p = 0.0
+    else:
+        p = reff / n_susceptible
 
-    final_size_distribution(
-        c=tab1,
-        n_susceptible=n_susceptible,
-        n_infected=n_infected,
-        p=p,
-    )
-
-    simulations(
-        c=tab2,
-        n_susceptible=n_susceptible,
-        n_infected=n_infected,
-        p=p,
-        n_simulations=n_simulations,
-        seed=seed,
-    )
-
-
-def final_size_distribution(
-    c: DeltaGenerator, n_susceptible: int, n_infected: int, p: float
-):
-    """Calculate and display the final size distribution"""
+    # do the pmf --------------------------------------------------------------
     # additional no. infected
     k = np.array(range(n_susceptible + 1))
     dens = rf.pmf(k=k, s=n_susceptible, i=n_infected, p=p)
 
-    c.altair_chart(
-        alt.Chart(pl.DataFrame({"total_infected": k + n_infected, "dens": dens * 100}))
-        .properties(title="Final size distribution")
-        .configure_title(anchor="middle")
-        .encode(
-            alt.X("total_infected:N", title="Total no. infected"),
-            alt.Y("dens", title="Probability (%)"),
-            tooltip=[
-                alt.Tooltip("total_infected:N", title="Total no. infected"),
-                alt.Tooltip("dens:Q", format=".1f", title="Probability (%)"),
-            ],
-        )
-        .mark_bar()
+    pmf_data = pl.DataFrame(
+        {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
     )
 
-
-def simulations(
-    c: DeltaGenerator,
-    n_susceptible: int,
-    n_infected: int,
-    p: float,
-    n_simulations: int,
-    seed: int,
-    jitter: float = 0.1,
-    opacity: float = 0.75,
-    stroke_width: float = 1.0,
-):
-    """Run and display stochastic simulations"""
-
+    # run the simulations ---------------------------------------------------
     rng = numpy.random.default_rng(seed)
 
     # get one numpy array, representing a timeseries of infections
     # per generation, for each simulation
-    results = [
+    simulations = [
         rf.simulate(s=n_susceptible, i=n_infected, p=p, rng=child)
         for child in rng.spawn(n_simulations)
     ]
 
     # combine into a dataframe
-    data = (
+    sim_data = (
         pl.concat(
             [
-                pl.DataFrame({"iter": k, "t": range(len(res)), "Incident": res})
-                for k, res in enumerate(results)
+                pl.DataFrame({"iter": k, "t": range(len(x)), "Incident": x})
+                for k, x in enumerate(simulations)
             ]
         )
         .sort(["iter", "t"])
-        # conver to cumulative infections
+        # convert to cumulative infections
         .with_columns(pl.col("Incident").cum_sum().over("iter").alias("Cumulative"))
     )
 
     # remove entries where no infections occurred
-    last_gen = data.filter(pl.col("Incident") > 0).select(pl.col("t").max()).item()
-    data = data.filter(pl.col("t") <= last_gen)
+    last_gen = sim_data.filter(pl.col("Incident") > 0).select(pl.col("t").max()).item()
+    sim_data = sim_data.filter(pl.col("t") <= last_gen)
 
-    metric = c.segmented_control(
-        "Metric", options=["Incident", "Cumulative"], default="Cumulative"
+    count_data = (
+        sim_data.group_by("iter")
+        .agg(pl.col("Cumulative").max().alias("cum_i_max"))
+        .group_by("cum_i_max")
+        .agg(pl.count().alias("n_sims"))
     )
-    assert metric is not None
 
-    # keep track of y-axis limit
-    max_y = data.select(pl.col(metric).max()).item() + 1
+    # ensure that count data have all the possible values
+    count_data = (
+        pl.DataFrame(
+            {"cum_i_max": list(range(n_infected, n_infected + n_susceptible + 1))}
+        )
+        .join(count_data, on="cum_i_max", how="left")
+        .with_columns(pl.col("n_sims").fill_null(0))
+    )
 
-    # add jitter to the y-axis to avoid overlapping lines
+    # get maximum cumulative infections in each iteration, and put that data only
+    # in the first timepoint
+    max_i_data = sim_data.group_by("iter").agg(
+        pl.col("Cumulative").max().alias("cum_i_max")
+    )
+
+    # Combine the different data into a single frame, which helps altair
+    # create the common y-axis.
+    # Instead of a bar chart, set up rectangles, because altair only does
+    # horizontal bar charts with non-quantitative y-axis values, which
+    # messes up the common y-axis.
+    chart_data = pl.concat(
+        [_enforce_schema(df) for df in [sim_data, count_data, pmf_data, max_i_data]],
+        how="vertical",
+    ).with_columns(
+        rect_x=0.0,
+        rect_x2=pl.col("n_sims"),
+        rect_y=pl.col("cum_i_max") - rect_half_height,
+        rect_y2=pl.col("cum_i_max") + rect_half_height,
+    )
+
+    # add jitter to avoid overlapping lines
     if jitter > 0:
-        data = data.with_columns(
-            pl.col(metric)
-            + pl.Series("jitter", np.random.uniform(-jitter, jitter, data.shape[0]))
+        chart_data = chart_data.with_columns(
+            pl.col("Cumulative", "Incident", "t")
+            + pl.Series("jitter", np.random.uniform(-jitter, jitter, chart_data.height))
         )
 
-    c.altair_chart(
-        alt.Chart(data)
-        .properties(title="Stochastic simulations")
-        .configure_title(anchor="middle")
+    # common features for multiple charts
+    max_y_line = sim_data.select(pl.col(metric).max()).item()
+    max_y_pmf = (
+        pmf_data.filter(pl.col("n_expected") >= pmf_tol)
+        .select(pl.col("cum_i_max").max())
+        .item()
+    )
+    max_y = max(max_y_line, max_y_pmf) + 1
+    # common name for cum_i_max
+    cum_i_max_title = "Final cumulative no. infected"
+    # common scale
+    scale = alt.Scale(domain=[0, max_y])
+
+    line_chart = (
+        alt.Chart(chart_data)
+        .properties(title="Simulated outbreaks")
         .encode(
-            alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
+            # need +1 because generations are zero-indexed; if last gen is 0, that's
+            # one generation
+            alt.X(
+                "t",
+                title="Generation",
+                axis=alt.Axis(tickCount=last_gen + 1),
+                scale=alt.Scale(domain=[0, last_gen]),
+            ),
             alt.Y(
-                metric, title=f"{metric} no. infected", axis=alt.Axis(tickCount=max_y)
+                metric,
+                title=f"{metric} no. infected",
+                scale=scale,
             ),
             alt.Detail("iter"),
         )
         .mark_line(opacity=opacity, strokeWidth=stroke_width)
     )
+
+    match metric:
+        case "Incident":
+            chart = line_chart
+        case "Cumulative":
+            hist_chart = (
+                alt.Chart(chart_data)
+                .properties(title="Final size distribution")
+                .mark_rect()
+                .encode(
+                    alt.X("rect_x", title="No. simulations"),
+                    alt.X2("rect_x2"),
+                    alt.Y("rect_y", title=cum_i_max_title, scale=scale),
+                    alt.Y2("rect_y2"),
+                    tooltip=[
+                        alt.Tooltip("cum_i_max", title=cum_i_max_title),
+                        alt.Tooltip("n_sims", title="No. simulations"),
+                    ],
+                )
+            )
+
+            pmf_chart = (
+                alt.Chart(chart_data)
+                .mark_line(
+                    color="#ff4b4b",
+                    clip=True,
+                    point=alt.OverlayMarkDef(color="red", size=50),
+                )
+                .encode(
+                    alt.Y("cum_i_max", scale=scale),
+                    alt.X("n_expected"),
+                    # I would have expected to order by cum_i_max, but `iter` works?
+                    alt.Order("iter"),
+                    tooltip=[
+                        alt.Tooltip("cum_i_max", title=cum_i_max_title),
+                        alt.Tooltip(
+                            "n_expected", title="Expected no. simulations", format=".2f"
+                        ),
+                    ],
+                )
+            )
+
+            chart = line_chart | (hist_chart + pmf_chart)
+
+    st.altair_chart(chart)
+
+
+def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
+    """Ensure data frame has the expected columns, adding null columns as needed"""
+    schema = [
+        ("iter", pdt.Int64),
+        ("t", pdt.Int64),
+        ("Incident", pdt.Int64),
+        ("Cumulative", pdt.Int64),
+        ("cum_i_max", pdt.Int64),
+        ("n_sims", pdt.Int64),
+        ("n_expected", pdt.Float64),
+    ]
+
+    schema_cols = [x[0] for x in schema]
+    assert set(df.columns).issubset(schema_cols)
+    new_cols = set(schema_cols) - set(df.columns)
+
+    return df.select(
+        *[
+            pl.lit(None).alias(name).cast(type_)
+            if name in new_cols
+            else pl.col(name).cast(type_)
+            for name, type_ in schema
+        ]
+    ).select(schema_cols)
 
 
 if __name__ == "__main__":
