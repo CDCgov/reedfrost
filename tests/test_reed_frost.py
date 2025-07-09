@@ -42,3 +42,16 @@ def test_pmf_large():
 def test_large_dist_warning():
     with pytest.raises(RuntimeWarning):
         rf.pmf_large(k=1, n=10, lambda_=0.5)
+
+
+def test_simulate():
+    """Simulate a Reed-Frost outbreak"""
+    s = 10
+    i = 1
+    p = 0.1
+    rng = np.random.default_rng(42)
+    result = rf.simulate(s=s, i=i, p=p, rng=rng)
+    assert isinstance(result, np.ndarray)
+    assert len(result) == s + 1
+    assert result[0] == i  # initial infected
+    assert np.all(result[1:] >= 0)  # no negative infections

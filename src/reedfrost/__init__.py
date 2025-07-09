@@ -150,3 +150,39 @@ def pmf_large(
     sd = np.sqrt(n) * sigma
     mean = n * (1.0 - theta)
     return scipy.stats.norm.pdf(x=k, loc=mean, scale=sd)
+
+
+def simulate(
+    s: int,
+    i: int,
+    p: float,
+    rng: np.random.Generator = np.random.default_rng(),
+) -> NDArray[np.integer]:
+    """Simulate a Reed-Frost outbreak
+
+    Args:
+        s (int): initial number of susceptibles
+        i (int): initial number of infected
+        p (float): probability of infection
+
+    Returns:
+        NDArray[np.integer]: number of infected in each generation
+    """
+    # time series of infections, starting with the initial infected,
+    # is at most of length s + 1
+    it = np.zeros(s + 1, dtype=np.int64)
+
+    if i == 0:
+        return it
+
+    it[0] = i
+
+    for t in range(s):
+        if it[t] == 0:
+            break
+
+        next_i = rng.binomial(n=s, p=1.0 - (1.0 - p) ** it[t])
+        it[t + 1] = next_i
+        s = s - next_i
+
+    return it
