@@ -8,7 +8,7 @@ import streamlit as st
 import reedfrost as rf
 
 
-def app(opacity=0.5, stroke_width=1.0, jitter=0.1):
+def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
     st.title("Reed-Frost model")
 
     with st.sidebar:
@@ -119,17 +119,25 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1):
         .with_columns(pl.col("n_sims").fill_null(0))
     )
 
-    max_y = sim_data.select(pl.col(metric).max()).item() + 1
-
     # get maximum cumulative infections in each iteration, and put that data only
     # in the first timepoint
     max_i_data = sim_data.group_by("iter").agg(
         pl.col("Cumulative").max().alias("cum_i_max")
     )
 
+    # Combine the different data into a single frame, which helps altair
+    # create the common y-axis.
+    # Instead of a bar chart, set up rectangles, because altair only does
+    # horizontal bar charts with non-quantitative y-axis values, which
+    # messes up the common y-axis.
     chart_data = pl.concat(
         [_enforce_schema(df) for df in [sim_data, count_data, pmf_data, max_i_data]],
         how="vertical",
+    ).with_columns(
+        rect_x=0.0,
+        rect_x2=pl.col("n_sims"),
+        rect_y=pl.col("cum_i_max") - rect_half_height,
+        rect_y2=pl.col("cum_i_max") + rect_half_height,
     )
 
     # add jitter to avoid overlapping lines
@@ -139,32 +147,40 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1):
             + pl.Series("jitter", np.random.uniform(-jitter, jitter, chart_data.height))
         )
 
+    # common features for multiple charts
+    max_y_line = sim_data.select(pl.col(metric).max()).item()
+    max_y_pmf = (
+        pmf_data.filter(pl.col("n_expected") >= pmf_tol)
+        .select(pl.col("cum_i_max").max())
+        .item()
+    )
+    max_y = max(max_y_line, max_y_pmf) + 1
+    # common name for cum_i_max
+    cum_i_max_title = "Final cumulative no. infected"
+    # common scale
+    scale = alt.Scale(domain=[0, max_y])
+
     line_chart = (
         alt.Chart(chart_data)
-        .properties(title="Stochastic simulations")
+        .properties(title="Simulated outbreaks")
         .encode(
-            alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
+            # need +1 because generations are zero-indexed; if last gen is 0, that's
+            # one generation
+            alt.X(
+                "t",
+                title="Generation",
+                axis=alt.Axis(tickCount=last_gen + 1),
+                scale=alt.Scale(domain=[0, last_gen]),
+            ),
             alt.Y(
                 metric,
                 title=f"{metric} no. infected",
-                scale=alt.Scale(domain=[0, max_y]),
+                scale=scale,
             ),
             alt.Detail("iter"),
         )
         .mark_line(opacity=opacity, strokeWidth=stroke_width)
     )
-
-    # common name for cum_i_max
-    cum_i_max_title = "Final cumulative no. infected"
-
-    # common tooltip for layered hist+pmf chart
-    tooltip = [
-        alt.Tooltip("cum_i_max", title=cum_i_max_title),
-        alt.Tooltip("n_sims", title="No. simulations"),
-        alt.Tooltip("n_expected", title="Expected no. simulations", format=".1f"),
-    ]
-
-    scale = alt.Scale(domain=[0, max_y])
 
     match metric:
         case "Incident":
@@ -172,21 +188,38 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1):
         case "Cumulative":
             hist_chart = (
                 alt.Chart(chart_data)
-                .mark_point()
+                .properties(title="Final size distribution")
+                .mark_rect()
                 .encode(
-                    alt.Y("cum_i_max", title=cum_i_max_title, scale=scale),
-                    alt.X("n_sims", title="No. simulations"),
-                    tooltip=tooltip,
+                    alt.X("rect_x", title="No. simulations"),
+                    alt.X2("rect_x2"),
+                    alt.Y("rect_y", title=cum_i_max_title, scale=scale),
+                    alt.Y2("rect_y2"),
+                    tooltip=[
+                        alt.Tooltip("cum_i_max", title=cum_i_max_title),
+                        alt.Tooltip("n_sims", title="No. simulations"),
+                    ],
                 )
             )
 
             pmf_chart = (
                 alt.Chart(chart_data)
-                .mark_point(color="#ff4b4b")
+                .mark_line(
+                    color="#ff4b4b",
+                    clip=True,
+                    point=alt.OverlayMarkDef(color="red", size=50),
+                )
                 .encode(
                     alt.Y("cum_i_max", scale=scale),
                     alt.X("n_expected"),
-                    tooltip=tooltip,
+                    # I would have expected to order by cum_i_max, but `iter` works?
+                    alt.Order("iter"),
+                    tooltip=[
+                        alt.Tooltip("cum_i_max", title=cum_i_max_title),
+                        alt.Tooltip(
+                            "n_expected", title="Expected no. simulations", format=".2f"
+                        ),
+                    ],
                 )
             )
 
