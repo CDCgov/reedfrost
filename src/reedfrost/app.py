@@ -62,119 +62,109 @@ def app():
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
-    simulation_chart = simulations(
-        n_susceptible=n_susceptible,
-        n_infected=n_infected,
-        p=p,
-        metric=metric,
-        n_simulations=n_simulations,
-        seed=seed,
-    )
-
-    match metric:
-        case "Incident":
-            st.altair_chart(simulation_chart)
-        case "Cumulative":
-            pmf_chart = final_size_distribution(
-                n_susceptible=n_susceptible,
-                n_infected=n_infected,
-                p=p,
-            )
-
-            st.altair_chart(simulation_chart | pmf_chart)
-
-
-def final_size_distribution(n_susceptible: int, n_infected: int, p: float) -> alt.Chart:
-    """Calculate and display the final size distribution"""
+    # do the pmf --------------------------------------------------------------
     # additional no. infected
     k = np.array(range(n_susceptible + 1))
     dens = rf.pmf(k=k, s=n_susceptible, i=n_infected, p=p)
 
-    data = pl.concat(
+    pmf_data = pl.concat(
         [
-            pl.DataFrame({"total_infected": k + n_infected, "dens": dens * 100}),
-            pl.DataFrame({"total_infected": range(n_infected), "dens": 0.0}),
+            pl.DataFrame({"cum_i_max": range(n_infected), "n_expected": 0.0}),
+            pl.DataFrame(
+                {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
+            ),
         ]
     )
 
-    return (
-        alt.Chart(data)
-        .properties(title="Final size distribution")
-        .encode(
-            alt.Y("total_infected:N", title="Total no. infected", sort="descending"),
-            alt.X("dens", title="Probability (%)"),
-            tooltip=[
-                alt.Tooltip("total_infected:N", title="Total no. infected"),
-                alt.Tooltip("dens:Q", format=".1f", title="Probability (%)"),
-            ],
-        )
-        .mark_bar()
-    )
-
-
-def simulations(
-    n_susceptible: int,
-    n_infected: int,
-    p: float,
-    n_simulations: int,
-    metric: str,
-    seed: int,
-    jitter: float = 0.1,
-    opacity: float = 0.75,
-    stroke_width: float = 1.0,
-) -> alt.Chart:
-    """Run and display stochastic simulations"""
-
-    assert metric in ["Incident", "Cumulative"]
-
+    # run the simulations ---------------------------------------------------
     rng = numpy.random.default_rng(seed)
 
     # get one numpy array, representing a timeseries of infections
     # per generation, for each simulation
-    results = [
+    simulations = [
         rf.simulate(s=n_susceptible, i=n_infected, p=p, rng=child)
         for child in rng.spawn(n_simulations)
     ]
 
     # combine into a dataframe
-    data = (
+    sim_data = (
         pl.concat(
             [
-                pl.DataFrame({"iter": k, "t": range(len(res)), "Incident": res})
-                for k, res in enumerate(results)
+                pl.DataFrame({"iter": k, "t": range(len(x)), "Incident": x})
+                for k, x in enumerate(simulations)
             ]
         )
         .sort(["iter", "t"])
-        # conver to cumulative infections
+        # convert to cumulative infections
         .with_columns(pl.col("Incident").cum_sum().over("iter").alias("Cumulative"))
     )
 
     # remove entries where no infections occurred
-    last_gen = data.filter(pl.col("Incident") > 0).select(pl.col("t").max()).item()
-    data = data.filter(pl.col("t") <= last_gen)
+    last_gen = sim_data.filter(pl.col("Incident") > 0).select(pl.col("t").max()).item()
+    # data = data.filter(pl.col("t") <= last_gen)
 
-    # keep track of y-axis limit
-    max_y = data.select(pl.col(metric).max()).item() + 1
+    max_y = sim_data.select(pl.col(metric).max()).item() + 1
 
-    # add jitter to the y-axis to avoid overlapping lines
-    if jitter > 0:
-        data = data.with_columns(
-            pl.col(metric)
-            + pl.Series("jitter", np.random.uniform(-jitter, jitter, data.shape[0]))
+    # get maximum cumulative infections in each iteration, and put that data only
+    # in the first timepoint
+    max_i_data = (
+        sim_data.group_by("iter")
+        .agg(pl.col("Cumulative").max().alias("cum_i_max"))
+        .with_columns(t=0)
+    )
+
+    # add jitter to avoid overlapping lines
+    jitter = 0.1
+    chart_data = (
+        sim_data.join(max_i_data, on=["iter", "t"], how="left", validate="1:1")
+        .join(pmf_data, on="cum_i_max", how="left", validate="m:1")
+        .with_columns(
+            pl.col("Cumulative", "Incident", "t")
+            + pl.Series("jitter", np.random.uniform(-jitter, jitter, sim_data.shape[0]))
         )
+    )
 
-    return (
-        alt.Chart(data)
+    opacity = 0.5
+    stroke_width = 1.0
+
+    line_chart = (
+        alt.Chart(chart_data)
         .properties(title="Stochastic simulations")
         .encode(
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
-                metric, title=f"{metric} no. infected", axis=alt.Axis(tickCount=max_y)
+                metric,
+                title=f"{metric} no. infected",
+                scale=alt.Scale(domain=[0, max_y]),
+                # axis=alt.Axis(tickCount=max_y + 1),
             ),
             alt.Detail("iter"),
         )
         .mark_line(opacity=opacity, strokeWidth=stroke_width)
     )
+
+    match metric:
+        case "Incident":
+            chart = line_chart
+        case "Cumulative":
+            hist_chart = (
+                alt.Chart(chart_data)
+                .mark_bar()
+                .encode(
+                    alt.Y("cum_i_max", scale=alt.Scale(domain=[0, max_y])),
+                    alt.X("count()"),
+                )
+            )
+
+            pmf_chart = (
+                alt.Chart(chart_data)
+                .mark_point(color="red")
+                .encode(alt.Y("cum_i_max"), alt.X("n_expected"))
+            )
+
+            chart = line_chart | (hist_chart + pmf_chart)
+
+    st.altair_chart(chart)
 
 
 if __name__ == "__main__":
