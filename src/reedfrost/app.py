@@ -15,44 +15,42 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1):
         n_susceptible = st.slider(
             "No. initially susceptible", min_value=1, max_value=50, step=1, value=10
         )
-        n_infected = st.slider(
-            "No. initially infected", min_value=1, max_value=10, step=1, value=1
-        )
         reff = st.slider(
             "Effective reproduction number",
             min_value=0.0,
             max_value=min(5.0, float(n_susceptible)),
-            step=0.01,
-            format="%.2f",
+            step=0.1,
+            format="%.1f",
             value=min(1.5, float(n_susceptible)),
         )
 
-        if n_susceptible == 0:
-            p = 0.0
-        else:
-            p = reff / n_susceptible
-
-        st.header("Stochastic parameters")
-
-        n_simulations = st.slider(
-            "No. simulations",
-            min_value=5,
-            max_value=250,
-            step=1,
-            value=50,
-        )
-        seed = st.number_input(
-            "Random seed",
-            min_value=0,
-            max_value=2**32 - 1,
-            step=1,
-            value=42,
-        )
-
         metric = st.segmented_control(
-            "Metric", options=["Cumulative", "Incident"], default="Cumulative"
+            "Infections metric",
+            options=["Cumulative", "Incident"],
+            default="Cumulative",
         )
         assert metric is not None
+
+        with st.expander("Advanced options", expanded=False):
+            n_infected = st.slider(
+                "No. initially infected", min_value=1, max_value=10, step=1, value=1
+            )
+
+            n_simulations = st.slider(
+                "No. simulations",
+                min_value=5,
+                max_value=250,
+                step=1,
+                value=50,
+            )
+
+            seed = st.number_input(
+                "Random seed",
+                min_value=0,
+                max_value=2**32 - 1,
+                step=1,
+                value=42,
+            )
 
         st.divider()
         st.header("Links")
@@ -61,6 +59,12 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1):
         st.page_link(
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
+
+    # derived parameters
+    if n_susceptible == 0:
+        p = 0.0
+    else:
+        p = reff / n_susceptible
 
     # do the pmf --------------------------------------------------------------
     # additional no. infected
