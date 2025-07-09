@@ -7,7 +7,7 @@ import streamlit as st
 import reedfrost as rf
 
 
-def app():
+def app(opacity=0.5, stroke_width=1.0, jitter=0.1):
     st.title("Reed-Frost model")
 
     with st.sidebar:
@@ -113,19 +113,16 @@ def app():
         .with_columns(t=0)
     )
 
-    # add jitter to avoid overlapping lines
-    jitter = 0.1
-    chart_data = (
-        sim_data.join(max_i_data, on=["iter", "t"], how="left", validate="1:1")
-        .join(pmf_data, on="cum_i_max", how="left", validate="m:1")
-        .with_columns(
-            pl.col("Cumulative", "Incident", "t")
-            + pl.Series("jitter", np.random.uniform(-jitter, jitter, sim_data.shape[0]))
-        )
-    )
+    chart_data = sim_data.join(
+        max_i_data, on=["iter", "t"], how="left", validate="1:1"
+    ).join(pmf_data, on="cum_i_max", how="full", validate="m:1", coalesce=True)
 
-    opacity = 0.5
-    stroke_width = 1.0
+    # add jitter to avoid overlapping lines
+    if jitter > 0:
+        chart_data = chart_data.with_columns(
+            pl.col("Cumulative", "Incident", "t")
+            + pl.Series("jitter", np.random.uniform(-jitter, jitter, chart_data.height))
+        )
 
     line_chart = (
         alt.Chart(chart_data)
@@ -136,12 +133,21 @@ def app():
                 metric,
                 title=f"{metric} no. infected",
                 scale=alt.Scale(domain=[0, max_y]),
-                # axis=alt.Axis(tickCount=max_y + 1),
             ),
             alt.Detail("iter"),
         )
         .mark_line(opacity=opacity, strokeWidth=stroke_width)
     )
+
+    # common name for cum_i_max
+    cum_i_max_title = "Final cumulative no. infected"
+
+    # common tooltip for layered hist+pmf chart
+    tooltip = [
+        alt.Tooltip("cum_i_max", title=cum_i_max_title),
+        alt.Tooltip("count()", title="No. simulations"),
+        alt.Tooltip("n_expected", title="Expected no. simulations", format=".1f"),
+    ]
 
     match metric:
         case "Incident":
@@ -151,15 +157,24 @@ def app():
                 alt.Chart(chart_data)
                 .mark_bar()
                 .encode(
-                    alt.Y("cum_i_max", scale=alt.Scale(domain=[0, max_y])),
-                    alt.X("count()"),
+                    alt.Y(
+                        "cum_i_max",
+                        title=cum_i_max_title,
+                        scale=alt.Scale(domain=[0, max_y]),
+                    ),
+                    alt.X("count()", title="No. simulations"),
+                    tooltip=tooltip,
                 )
             )
 
             pmf_chart = (
                 alt.Chart(chart_data)
-                .mark_point(color="red")
-                .encode(alt.Y("cum_i_max"), alt.X("n_expected"))
+                .mark_point(color="#ff4b4b")
+                .encode(
+                    alt.Y("cum_i_max", scale=alt.Scale(domain=[0, max_y])),
+                    alt.X("n_expected"),
+                    tooltip=tooltip,
+                )
             )
 
             chart = line_chart | (hist_chart + pmf_chart)
