@@ -13,16 +13,24 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
 
     with st.sidebar:
         st.header("Input parameters")
-        n_susceptible = st.slider(
-            "No. initially susceptible", min_value=1, max_value=50, step=1, value=10
+        n = st.slider("Population size", min_value=1, max_value=100, step=1, value=10)
+
+        # user input is in proportions, but we get the integer number
+        n_immune = st.select_slider(
+            "Proportion initially immune",
+            # values are from 0 to N-1, leaving space for at least 1 infected
+            options=range(0, n),
+            value=0,
+            format_func=lambda x: f"{x / n:.0%}",
         )
-        reff = st.slider(
-            "Effective reproduction number",
+
+        brn = st.slider(
+            "Basic reproduction number",
             min_value=0.0,
-            max_value=min(5.0, float(n_susceptible)),
+            max_value=min(15.0, float(n)),
             step=0.1,
             format="%.1f",
-            value=min(1.5, float(n_susceptible)),
+            value=min(1.5, float(n)),
         )
 
         metric = st.segmented_control(
@@ -33,9 +41,19 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
         assert metric is not None
 
         with st.expander("Advanced options", expanded=False):
-            n_infected = st.slider(
-                "No. initially infected", min_value=1, max_value=10, step=1, value=1
-            )
+            # need special handling for the case where everyone is immune but 1,
+            # because streamlit sliders must have a range
+            if n - n_immune == 1:
+                n_infected = 1
+                st.text("No. initially infected: 1")
+            else:
+                n_infected = st.slider(
+                    "No. initially infected",
+                    min_value=1,
+                    max_value=n - n_immune,
+                    step=1,
+                    value=1,
+                )
 
             n_simulations = st.slider(
                 "No. simulations",
@@ -62,10 +80,12 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
         )
 
     # derived parameters
+    n_susceptible = n - n_immune - n_infected
+
     if n_susceptible == 0:
         p = 0.0
     else:
-        p = reff / n_susceptible
+        p = brn / n
 
     # do the pmf --------------------------------------------------------------
     # additional no. infected
@@ -144,7 +164,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
     if jitter > 0:
         chart_data = chart_data.with_columns(
             pl.col("Cumulative", "Incident", "t")
-            + pl.Series("jitter", np.random.uniform(-jitter, jitter, chart_data.height))
+            + pl.Series("jitter", rng.uniform(-jitter, jitter, chart_data.height))
         )
 
     # common features for multiple charts
@@ -158,7 +178,8 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
     # common name for cum_i_max
     cum_i_max_title = "Final cumulative no. infected"
     # common scale
-    scale = alt.Scale(domain=[0, max_y])
+    y_scale = alt.Scale(domain=[0, max_y])
+    y_axis = alt.Axis(tickCount=last_gen + 1)
 
     line_chart = (
         alt.Chart(chart_data)
@@ -175,13 +196,21 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
             alt.Y(
                 metric,
                 title=f"{metric} no. infected",
-                scale=scale,
+                axis=y_axis,
+                scale=y_scale,
             ),
             alt.Detail("iter"),
         )
         .mark_line(opacity=opacity, strokeWidth=stroke_width)
     )
 
+    st.subheader("Initial conditions")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    col1.text(f"Initial susceptible: {n_susceptible}")
+    col2.text(f"Initial immune: {n_immune}")
+    col3.text(f"Initial infected: {n_infected}")
+
+    st.subheader("Results")
     match metric:
         case "Incident":
             chart = line_chart
@@ -193,7 +222,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
                 .encode(
                     alt.X("rect_x", title="No. simulations"),
                     alt.X2("rect_x2"),
-                    alt.Y("rect_y", title=cum_i_max_title, scale=scale),
+                    alt.Y("rect_y", title=cum_i_max_title, scale=y_scale, axis=y_axis),
                     alt.Y2("rect_y2"),
                     tooltip=[
                         alt.Tooltip("cum_i_max", title=cum_i_max_title),
@@ -210,7 +239,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
                     point=alt.OverlayMarkDef(color="red", size=50),
                 )
                 .encode(
-                    alt.Y("cum_i_max", scale=scale),
+                    alt.Y("cum_i_max", scale=y_scale, axis=y_axis),
                     alt.X("n_expected"),
                     # I would have expected to order by cum_i_max, but `iter` works?
                     alt.Order("iter"),
