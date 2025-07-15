@@ -87,13 +87,31 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
     else:
         p = brn / n
 
+    sim = rf.ReedFrost(s0=n_susceptible, i0=n_infected, p=p)
+
     # do the pmf --------------------------------------------------------------
     # additional no. infected
     k = np.array(range(n_susceptible + 1))
-    dens = rf.pmf(k=k, s=n_susceptible, i=n_infected, p=p)
+    dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
 
     pmf_data = pl.DataFrame(
         {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
+    )
+
+    # do the state pmf --------------------------------------------------------
+    state_pmf = pl.from_dicts(
+        [
+            {
+                "s": s,
+                "Cumulative": n_infected + (n_susceptible - s),
+                "t": t,
+                "prob": sum(
+                    [sim.prob_state(s, i, t) for i in range(n_susceptible + 1)]
+                ),
+            }
+            for s in range(n_susceptible + 1)
+            for t in range(n_susceptible + 1)
+        ]
     )
 
     # run the simulations ---------------------------------------------------
@@ -101,10 +119,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
 
     # get one numpy array, representing a timeseries of infections
     # per generation, for each simulation
-    simulations = [
-        rf.simulate(s=n_susceptible, i=n_infected, p=p, rng=child)
-        for child in rng.spawn(n_simulations)
-    ]
+    simulations = [sim.simulate(rng=child) for child in rng.spawn(n_simulations)]
 
     # combine into a dataframe
     sim_data = (
@@ -255,6 +270,23 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
             chart = line_chart | (hist_chart + pmf_chart)
 
     st.altair_chart(chart)
+
+    state_chart = (
+        alt.Chart(state_pmf.filter(pl.col("t") > 0))
+        .properties(title="Probability of no. of infections by generation")
+        .mark_rect()
+        .encode(
+            alt.X("t:N", title="Generation"),
+            alt.Y("Cumulative:N", sort="descending", title="Cumulative no. infected"),
+            color=alt.condition(
+                alt.datum.prob == 0,
+                alt.value("black"),
+                alt.Color("prob", title="Probability").bin(maxbins=10),
+            ),
+        )
+    )
+
+    st.altair_chart(state_chart)
 
 
 def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:

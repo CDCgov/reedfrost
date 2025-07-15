@@ -1,8 +1,7 @@
 import numpy as np
-import pytest
 import scipy.stats
 
-import reedfrost as rf
+from reedfrost import ReedFrost
 
 
 def test_pmf_binom():
@@ -12,36 +11,30 @@ def test_pmf_binom():
     p = 0.02
     np.testing.assert_almost_equal(
         scipy.stats.binom.pmf(k=k, n=n, p=p),
-        [rf._pmf_binom(k=kk, n=n, p=p) for kk in k],
+        [ReedFrost._pmf_binom(k=kk, n=n, p=p) for kk in k],
     )
 
 
 def test_pmf_2():
     """For 1 infected and 2 susceptible, do the math by hand"""
-
     for p in [0.1, 0.7]:
-        current = rf.pmf(k=np.array([0, 1, 2]), s=2, p=p, i=1)
+        x = ReedFrost(s0=2, p=p, i0=1)
+        current = [x.prob_final_i_cum_extra(k) for k in [0, 1, 2]]
         expected = [(1 - p) ** 2, 2 * p * (1 - p) ** 2, p**2 + 2 * p**2 * (1 - p)]
         np.testing.assert_allclose(current, expected, atol=1e-6, rtol=0.0)
 
 
-def test_pmf_vector():
-    """PMF can take vectors"""
-    result = rf.pmf(k=np.array([0, 1, 2]), s=2, p=0.1, i=1)
-    assert isinstance(result, np.ndarray)
-    assert len(result) == 3
-
-
-def test_pmf_large():
-    current = rf.pmf_large(k=np.array([0, 10, 50, 90]), n=100, lambda_=1.5, i_n=1)
-    np.testing.assert_allclose(
-        current, [2.383925e-07, 8.889213e-06, 2.349612e-02, 1.623636e-03], rtol=1e-6
+def test_pmf_snapshot():
+    """Check for a few known values"""
+    current = np.array(
+        [
+            ReedFrost(s0=10, i0=1, p=0.1).prob_final_i_cum_extra(0),
+            ReedFrost(s0=11, i0=2, p=0.2).prob_final_i_cum_extra(1),
+            ReedFrost(s0=12, i0=3, p=0.3).prob_final_i_cum_extra(3),
+        ]
     )
-
-
-def test_large_dist_warning():
-    with pytest.raises(RuntimeWarning):
-        rf.pmf_large(k=1, n=10, lambda_=0.5)
+    expected = np.array([3.486784e-01, 4.902243e-03, 5.321873e-07])
+    np.testing.assert_allclose(current, expected, rtol=1e-6)
 
 
 def test_simulate():
@@ -50,7 +43,7 @@ def test_simulate():
     i = 1
     p = 0.1
     rng = np.random.default_rng(42)
-    result = rf.simulate(s=s, i=i, p=p, rng=rng)
+    result = ReedFrost(s0=s, i0=i, p=p).simulate(rng=rng)
     assert isinstance(result, np.ndarray)
     assert len(result) == s + 1
     assert result[0] == i  # initial infected

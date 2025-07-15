@@ -1,0 +1,58 @@
+# Chain binomial models
+
+Chain binomial models are discrete time, discrete person, two-dimensional Markov chain models. Epidemiologically, these models track numbers of susceptibles $S_t$ and infected $I_t$ in each generation $t$.
+
+In probability theoretic notation, we write $S_t$ and $I_t$ to mean the events that there are a certain number of susceptible and infected individuals in generation $t$. Given an initial state $(S_0, I_0)$ and a transition probability $P(S_t, I_t | S_{t-1}, I_{t-1})$, the probability of a particular trajectory $(S_0, I_0, S_1, I_1, \ldots, S_t, I_t)$ is:
+
+```math
+P(S_t, I_t | S_{t-1}, I_{t-1}) \ldots P(S_1, I_1 | S_0, I_0)
+```
+
+## General assumptions and corollaries
+
+- Use an susceptible-infectious-removed infection course, with a fixed population size $n$, so that there always an implicit removed population $n - S_t - I_t$.
+- Infections last one generation.
+- $I_t \sim \mathrm{Binom}(S_t, \pi(I_{t-1}))$, where $\pi$ is a function that determines the binomial probability based on the number of prior infections (and some fixed parameters). We require that $\pi(0)=0$.
+- $S_t = S_{t-1} - I_t$. The number of susceptibles is non-increasing.
+- There is some stopping time $\tau$ such that $I_t=0$ and $S_t = S_\tau$ for all $t \geq \tau$.
+
+## Specific models
+
+### Reed-Frost
+
+Each infected person has an independent probability $p$ of infecting each susceptible person:
+
+```math
+\pi(i) = 1 - (1 - p)^i
+```
+
+### Greenwood
+
+If there is at least one infected person, then each susceptible person has a static probability $p$ of being infected:
+
+```math
+\pi(i) = \begin{cases}
+p & i > 0 \\
+0 & i = 0
+\end{cases}
+```
+
+### En'ko
+
+Each susceptible person makes $k$ successful contacts per generation:
+
+```math
+\pi(i) = 1 - \left(1 - \frac{i}{n-1}\right)^k
+```
+
+## Implementation
+
+Let $P(s, i, t)$ be the probability of being in state $(s, i)$ in generation $t$. Begin from an initial state, setting $P(s_0, i_0, 0) = 1$. Then iteratively generate:
+
+```math
+P(s, i, t) = \sum_{i'=0}^{s_0-s-i} f_\mathrm{Binom}(i; s+i, \pi(i') ) \cdot P(s + i, i', t - 1)
+```
+
+### Final size
+
+By time $t=s_0+1$, we are guaranteed to have $i=0$, because the longest time to extinction will occur when there is 1 infection in each generation. Thus, $P(s_\infty, 0, s_0+1)$ is the distribution of final sizes, parameterized by the number of remaining susceptibles $s_\infty$. The cumulative number of infections is $i_0 + (s_0 - s_\infty)$.

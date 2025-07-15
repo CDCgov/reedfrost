@@ -5,6 +5,4 @@
   See https://mkdocstrings.github.io/
 -->
 
-::: reedfrost.pmf
-
-::: reedfrost.pmf_large
+::: reedfrost
