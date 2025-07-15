@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.stats
 
-import reedfrost as rf
 from reedfrost import ReedFrost
 
 
@@ -44,7 +43,7 @@ def test_simulate():
     i = 1
     p = 0.1
     rng = np.random.default_rng(42)
-    result = rf.simulate(s=s, i=i, p=p, rng=rng)
+    result = ReedFrost(s0=s, i0=i, p=p).simulate(rng=rng)
     assert isinstance(result, np.ndarray)
     assert len(result) == s + 1
     assert result[0] == i  # initial infected
