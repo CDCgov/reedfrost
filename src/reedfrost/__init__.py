@@ -7,40 +7,74 @@ import scipy.stats
 from numpy.typing import NDArray
 
 
-@functools.cache
-def _rftp(i_next: int, s: int, i: int, p: float) -> float:
-    """Reed-Frost transition probability
+class ReedFrost:
+    def __init__(self, s0: int, p: float, i0: int = 1):
+        assert s0 >= 0
+        assert 0.0 <= p <= 1.0
+        assert i0 >= 0
+        self.s0 = s0
+        self.p = p
+        self.i0 = i0
 
-    Probability of there being i_next infections at the next step,
-    given there are currently s susceptibles, i infected, and the
-    infection probability is p.
+    def prob_final_size(self, s_inf: int) -> float:
+        """Probability of being in state (s_inf, 0) at infinite time
 
-    Args:
-        i_next (int): next number of infected
-        s (int): current number of susceptibles
-        i (int): current number of infected
-        p (float): probability of infection
+        Args:
+            s_inf (int): number of susceptibles when outbreak is over
 
-    Returns:
-        float: probability mass
-    """
-    return _pmf_binom(k=i_next, n=s, p=1.0 - (1.0 - p) ** i)
+        Returns:
+            float: probability mass
+        """
+        return self.prob_state(s=s_inf, i=0, t=self.s0 + 1)
 
+    @functools.cache
+    def prob_state(self, s: int, i: int, t: int) -> float:
+        """Probability of being in state (s, i) at time t
 
-def _pmf_binom(k: int, n: int, p: float) -> float:
-    """Binomial distribution pmf
+        Args:
+            s (int): number of susceptibles
+            i (int): number of infected
+            t (int): generation
 
-    This implementation is substantially faster than scipy.stats.binom.pmf
+        Returns:
+            float: probability mass
+        """
+        if t == 0:
+            if s == self.s0 and i == self.i0:
+                return 1.0
+            else:
+                return 0.0
+        elif t > 0:
+            return sum(
+                [
+                    self._tp(i, s + i, ip, p=self.p) * self.prob_state(s + i, ip, t - 1)
+                    for ip in range(self.s0 + 1)
+                    if self.prob_state(s + i, ip, t - 1) > 0.0
+                ]
+            )
+        else:
+            raise ValueError(f"Negative generation {t}")
 
-    Args:
-        k (int): number of successes
-        n (int): number of trials
-        p (float): success probability
+    @classmethod
+    @functools.cache
+    def _tp(cls, i, si, ip, p: float) -> float:
+        return cls._pmf_binom(k=i, n=si, p=1.0 - (1.0 - p) ** ip)
 
-    Returns:
-        float: probability mass
-    """
-    return scipy.special.binom(n, k) * p**k * (1.0 - p) ** (n - k)
+    @staticmethod
+    def _pmf_binom(k: int, n: int, p: float) -> float:
+        """Binomial distribution pmf
+
+        This implementation is substantially faster than scipy.stats.binom.pmf
+
+        Args:
+            k (int): number of successes
+            n (int): number of trials
+            p (float): success probability
+
+        Returns:
+            float: probability mass
+        """
+        return scipy.special.binom(n, k) * p**k * (1.0 - p) ** (n - k)
 
 
 @functools.cache
@@ -100,56 +134,23 @@ def pmf(
         raise ValueError(f"Unknown type {type(k)}")
 
 
-def _theta_fun(w: float, lambda_: float) -> float:
-    """Function for theta_n as per Barbour & Sergey 2004
+def _rftp(i_next: int, s: int, i: int, p: float) -> float:
+    """Reed-Frost transition probability
+
+    Probability of there being i_next infections at the next step,
+    given there are currently s susceptibles, i infected, and the
+    infection probability is p.
 
     Args:
-        w (float): variable for root-finding
-        lambda_ (float): reproduction number
+        i_next (int): next number of infected
+        s (int): current number of susceptibles
+        i (int): current number of infected
+        p (float): probability of infection
 
     Returns:
-        float: root
+        float: probability mass
     """
-
-    def f(t):
-        if t == 0.0:
-            return np.inf
-        else:
-            return t - np.log(t) / lambda_ - (1.0 + w)
-
-    # do type checking here because type hinting gets confused about whether
-    # this results a tuple or a float
-    result = scipy.optimize.brentq(f, 0.0, 1.0, full_output=False)
-    assert isinstance(result, float)
-    return result
-
-
-def pmf_large(
-    k: int | NDArray[np.int64], n: int, lambda_: float, i_n: int = 1
-) -> float | NDArray[np.float64]:
-    """Distribution of outbreak sizes of Reed-Frost outbreaks, conditioned on
-    the outbreak being large.
-
-    See Barbour & Sergey 2004 (doi:10.1016/j.spa.2004.03.013) corollary 3.4
-
-    Args:
-        k (int, or int array): number of total infections
-        n (int): initial number of susceptibles
-        lambda_ (float): reproduction number
-        i_n (int, optional): initial number of susceptibles. Defaults to 1.
-
-    Returns:
-        float, or float array: pmf of the total infection distribution
-    """
-    if not lambda_ > 1.0:
-        raise RuntimeWarning(
-            f"Large outbreak distribution assumes lambda>1, instead saw {lambda_}"
-        )
-    theta = _theta_fun(i_n / n, lambda_)
-    sigma = np.sqrt(theta * (1.0 - theta) / (1 - lambda_ * theta) ** 2)
-    sd = np.sqrt(n) * sigma
-    mean = n * (1.0 - theta)
-    return scipy.stats.norm.pdf(x=k, loc=mean, scale=sd)
+    return ReedFrost._pmf_binom(k=i_next, n=s, p=1.0 - (1.0 - p) ** i)
 
 
 def simulate(

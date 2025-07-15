@@ -50,5 +50,9 @@ Each susceptible person makes $k$ successful contacts per generation:
 Let $P(s, i, t)$ be the probability of being in state $(s, i)$ in generation $t$. Begin from an initial state, setting $P(s_0, i_0, 0) = 1$. Then iteratively generate:
 
 ```math
-P(s, i, t) = \sum_{i'=0}^{n-s-i} f_\mathrm{Binom}(i; s+i, \pi(i') ) \cdot P(s + i, i', t - 1)
+P(s, i, t) = \sum_{i'=0}^{s_0-s-i} f_\mathrm{Binom}(i; s+i, \pi(i') ) \cdot P(s + i, i', t - 1)
 ```
+
+### Final size
+
+By time $t=s_0+1$, we are guaranteed to have $i=0$, because the longest time to extinction will occur when there is 1 infection in each generation. Thus, $P(s_\infty, 0, s_0+1)$ is the distribution of final sizes, parameterized by the number of remaining susceptibles $s_\infty$. The cumulative number of infections is $i_0 + (s_0 - s_\infty)$.

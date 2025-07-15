@@ -1,8 +1,8 @@
 import numpy as np
-import pytest
 import scipy.stats
 
 import reedfrost as rf
+from reedfrost import ReedFrost
 
 
 def test_pmf_binom():
@@ -12,7 +12,7 @@ def test_pmf_binom():
     p = 0.02
     np.testing.assert_almost_equal(
         scipy.stats.binom.pmf(k=k, n=n, p=p),
-        [rf._pmf_binom(k=kk, n=n, p=p) for kk in k],
+        [ReedFrost._pmf_binom(k=kk, n=n, p=p) for kk in k],
     )
 
 
@@ -43,18 +43,6 @@ def test_pmf_snapshot():
     )
     expected = np.array([3.486784e-01, 4.902243e-03, 5.321873e-07])
     np.testing.assert_allclose(current, expected, rtol=1e-6)
-
-
-def test_pmf_large():
-    current = rf.pmf_large(k=np.array([0, 10, 50, 90]), n=100, lambda_=1.5, i_n=1)
-    np.testing.assert_allclose(
-        current, [2.383925e-07, 8.889213e-06, 2.349612e-02, 1.623636e-03], rtol=1e-6
-    )
-
-
-def test_large_dist_warning():
-    with pytest.raises(RuntimeWarning):
-        rf.pmf_large(k=1, n=10, lambda_=0.5)
 
 
 def test_simulate():
