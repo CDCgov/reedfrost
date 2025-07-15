@@ -6,6 +6,8 @@ from numpy.typing import NDArray
 
 
 class ReedFrost:
+    """Reed-Frost model"""
+
     def __init__(self, s0: int, p: float, i0: int = 1):
         assert s0 >= 0
         assert 0.0 <= p <= 1.0
@@ -97,9 +99,7 @@ class ReedFrost:
         """Simulate a Reed-Frost outbreak
 
         Args:
-            s (int): initial number of susceptibles
-            i (int): initial number of infected
-            p (float): probability of infection
+            rng (np.random.Generator): random number generator
 
         Returns:
             NDArray[np.integer]: number of infected in each generation
