@@ -1,9 +1,7 @@
 import functools
 
 import numpy as np
-import scipy.optimize
 import scipy.special
-import scipy.stats
 from numpy.typing import NDArray
 
 
@@ -16,10 +14,27 @@ class ReedFrost:
         self.p = p
         self.i0 = i0
 
-    def prob_final_size(self, k: int) -> float:
-        # no. of infections beyond the initial infection(s)
-        s_inf = self.s0 - k
+    def prob_final_s(self, s_inf: int) -> float:
+        """Probability of a certain final number of susceptibles"""
+        assert s_inf >= 0
         return self.prob_state(s=s_inf, i=0, t=self.s0 + 1)
+
+    def prob_final_i_cum_extra(self, k: int) -> float:
+        """
+        Probability of a certain number of infection beyond the initial infection(s)
+        """
+        assert k >= 0
+        return self.prob_final_s(s_inf=self.s0 - k)
+
+    def prob_final_i_cum(self, i_cum: int) -> float:
+        """
+        Probability of a certain number of total infections, including the initial infection(s)
+        """
+        assert i_cum >= 0
+        if i_cum < self.i0:
+            return 0.0
+        else:
+            return self.prob_final_i_cum_extra(k=i_cum - self.i0)
 
     @functools.cache
     def prob_state(self, s: int, i: int, t: int) -> float:
@@ -75,114 +90,36 @@ class ReedFrost:
         """
         return scipy.special.binom(n, k) * p**k * (1.0 - p) ** (n - k)
 
+    def simulate(
+        self,
+        rng: np.random.Generator = np.random.default_rng(),
+    ) -> NDArray[np.integer]:
+        """Simulate a Reed-Frost outbreak
 
-@functools.cache
-def _pmf_s_inf(s_inf: int, s: int, i: int, p: float) -> float:
-    """Reed-Frost final size distribution, measured in terms of numbers of
-    susceptibles at infinite time
+        Args:
+            s (int): initial number of susceptibles
+            i (int): initial number of infected
+            p (float): probability of infection
 
-    Args:
-        s_inf (int): number of susceptibles when outbreak is over
-        s (int): initial number of susceptibles
-        i (int): initial number of infected
-        p (float): probability of infection
+        Returns:
+            NDArray[np.integer]: number of infected in each generation
+        """
+        # time series of infections, starting with the initial infected,
+        # is at most of length s + 1
+        it = np.zeros(self.s0 + 1, dtype=np.int64)
 
-    Returns:
-        float: probability mass
-    """
-    if i == 0 and s_inf == s:
-        return 1.0
-    elif i == 0 and s_inf != s:
-        return 0.0
-    elif s < s_inf:
-        return 0.0
-    else:
-        value = sum(
-            _rftp(i_next=j, s=s, i=i, p=p) * _pmf_s_inf(s_inf=s_inf, s=s - j, i=j, p=p)
-            for j in range(s - s_inf + 1)
-        )
+        if self.i0 == 0:
+            return it
 
-        if 0.0 <= value and value <= 1.0:
-            return value
-        else:
-            raise RuntimeError(
-                f"Numerical instability for {s_inf=} {s=} {i=} {p=}: "
-                f"resulting pmf value is {value}"
-            )
+        it[0] = self.i0
+        s = self.s0
 
+        for t in range(self.s0):
+            if it[t] == 0:
+                break
 
-def pmf(
-    k: int | NDArray[np.integer], s: int, i: int, p: float
-) -> float | NDArray[np.floating]:
-    """Reed-Frost final size distribution
+            next_i = rng.binomial(n=s, p=1.0 - (1.0 - self.p) ** it[t])
+            it[t + 1] = next_i
+            s = s - next_i
 
-    Args:
-        k (int | NDArray[np.integer]): number of infections beyond the initial infections
-        s (int): initial number of susceptibles
-        i (int): initial number of infected
-        p (float): probability of infection
-
-    Returns:
-        float | NDArray[np.floating]: probability mass
-    """
-    if isinstance(k, (int, np.integer)):
-        return _pmf_s_inf(s_inf=s - k, s=s, i=i, p=p)
-    elif isinstance(k, np.ndarray):
-        return np.array([_pmf_s_inf(s_inf=s - kk, s=s, i=i, p=p) for kk in k])
-    else:
-        raise ValueError(f"Unknown type {type(k)}")
-
-
-def _rftp(i_next: int, s: int, i: int, p: float) -> float:
-    """Reed-Frost transition probability
-
-    Probability of there being i_next infections at the next step,
-    given there are currently s susceptibles, i infected, and the
-    infection probability is p.
-
-    Args:
-        i_next (int): next number of infected
-        s (int): current number of susceptibles
-        i (int): current number of infected
-        p (float): probability of infection
-
-    Returns:
-        float: probability mass
-    """
-    return ReedFrost._pmf_binom(k=i_next, n=s, p=1.0 - (1.0 - p) ** i)
-
-
-def simulate(
-    s: int,
-    i: int,
-    p: float,
-    rng: np.random.Generator = np.random.default_rng(),
-) -> NDArray[np.integer]:
-    """Simulate a Reed-Frost outbreak
-
-    Args:
-        s (int): initial number of susceptibles
-        i (int): initial number of infected
-        p (float): probability of infection
-
-    Returns:
-        NDArray[np.integer]: number of infected in each generation
-    """
-    # time series of infections, starting with the initial infected,
-    # is at most of length s + 1
-    it = np.zeros(s + 1, dtype=np.int64)
-
-    if i == 0:
         return it
-
-    it[0] = i
-
-    for t in range(s):
-        if it[t] == 0:
-            break
-
-        next_i = rng.binomial(n=s, p=1.0 - (1.0 - p) ** it[t])
-        it[t + 1] = next_i
-        s = s - next_i
-
-    return it

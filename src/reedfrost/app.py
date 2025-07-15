@@ -87,10 +87,12 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
     else:
         p = brn / n
 
+    sim = rf.ReedFrost(s0=n_susceptible, i0=n_infected, p=p)
+
     # do the pmf --------------------------------------------------------------
     # additional no. infected
     k = np.array(range(n_susceptible + 1))
-    dens = rf.pmf(k=k, s=n_susceptible, i=n_infected, p=p)
+    dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
 
     pmf_data = pl.DataFrame(
         {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
@@ -101,10 +103,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
 
     # get one numpy array, representing a timeseries of infections
     # per generation, for each simulation
-    simulations = [
-        rf.simulate(s=n_susceptible, i=n_infected, p=p, rng=child)
-        for child in rng.spawn(n_simulations)
-    ]
+    simulations = [sim.simulate(rng=child) for child in rng.spawn(n_simulations)]
 
     # combine into a dataframe
     sim_data = (
