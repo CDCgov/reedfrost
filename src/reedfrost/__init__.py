@@ -16,15 +16,9 @@ class ReedFrost:
         self.p = p
         self.i0 = i0
 
-    def prob_final_size(self, s_inf: int) -> float:
-        """Probability of being in state (s_inf, 0) at infinite time
-
-        Args:
-            s_inf (int): number of susceptibles when outbreak is over
-
-        Returns:
-            float: probability mass
-        """
+    def prob_final_size(self, k: int) -> float:
+        # no. of infections beyond the initial infection(s)
+        s_inf = self.s0 - k
         return self.prob_state(s=s_inf, i=0, t=self.s0 + 1)
 
     @functools.cache
@@ -39,16 +33,21 @@ class ReedFrost:
         Returns:
             float: probability mass
         """
-        if t == 0:
-            if s == self.s0 and i == self.i0:
-                return 1.0
-            else:
-                return 0.0
+        assert t >= 0
+        assert i >= 0
+        assert s >= 0
+
+        if t == 0 and s == self.s0 and i == self.i0:
+            return 1.0
+        elif t == 0:
+            return 0.0
+        elif s + i > self.s0:
+            return 0.0
         elif t > 0:
             return sum(
                 [
                     self._tp(i, s + i, ip, p=self.p) * self.prob_state(s + i, ip, t - 1)
-                    for ip in range(self.s0 + 1)
+                    for ip in range((self.s0 + self.i0) - (s + i) + 1)
                     if self.prob_state(s + i, ip, t - 1) > 0.0
                 ]
             )

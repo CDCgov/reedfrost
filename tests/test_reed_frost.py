@@ -36,9 +36,9 @@ def test_pmf_snapshot():
     """Check for a few known values"""
     current = np.array(
         [
-            rf.pmf(k=0, s=10, i=1, p=0.1),
-            rf.pmf(k=1, s=11, i=2, p=0.2),
-            rf.pmf(k=3, s=12, i=3, p=0.3),
+            ReedFrost(s0=10, i0=1, p=0.1).prob_final_size(0),
+            ReedFrost(s0=11, i0=2, p=0.2).prob_final_size(1),
+            ReedFrost(s0=12, i0=3, p=0.3).prob_final_size(3),
         ]
     )
     expected = np.array([3.486784e-01, 4.902243e-03, 5.321873e-07])
