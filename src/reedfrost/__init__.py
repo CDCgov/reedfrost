@@ -148,3 +148,31 @@ class ReedFrost(ChainBinomial):
 
     def _pi(self, i: int) -> float:
         return 1.0 - (1.0 - self.params["p"]) ** i
+
+
+class Greenwood(ChainBinomial):
+    """Greenwood model"""
+
+    @staticmethod
+    def _validate_params(params: dict[str, Any]) -> None:
+        """Validate parameters for the Greenwood model"""
+        assert "p" in params
+        assert 0.0 <= params["p"] <= 1.0
+
+    def _pi(self, i: int) -> float:
+        return self.params["p"] if i > 0 else 0.0
+
+
+class Enko(ChainBinomial):
+    """Enko model"""
+
+    @staticmethod
+    def _validate_params(params: dict[str, Any]) -> None:
+        """Validate parameters for the Enko model"""
+        assert "k" in params
+        assert params["k"] >= 0.0
+        assert "n" in params
+        assert params["n"] > 0.0
+
+    def _pi(self, i: int) -> float:
+        return 1.0 - (1.0 - 1.0 / (self.params["n"] - 1.0)) ** self.params["k"]
