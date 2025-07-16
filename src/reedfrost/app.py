@@ -34,7 +34,9 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
         )
 
         model = st.segmented_control(
-            "Model", options=["Reed-Frost", "Greenwood", "Enko"], default="Reed-Frost"
+            "Model",
+            options=["Reed-Frost", "Enko", "Greenwood"],
+            default="Reed-Frost",
         )
         assert model is not None
 
