@@ -161,7 +161,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
         sim_data.group_by("iter")
         .agg(pl.col("Cumulative").max().alias("cum_i_max"))
         .group_by("cum_i_max")
-        .agg(pl.count().alias("n_sims"))
+        .agg(pl.len().alias("n_sims"))
     )
 
     # ensure that count data have all the possible values
