@@ -3,6 +3,7 @@ import numpy as np
 import numpy.random
 import polars as pl
 import polars.datatypes as pdt
+import scipy.stats
 import streamlit as st
 
 import reedfrost
@@ -112,9 +113,22 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
     # additional no. infected
     k = np.array(range(n_susceptible + 1))
     dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
+    level = 0.95
+    lower_ci, upper_ci = list(
+        zip(*[_binom_ci(n=n_simulations, p=mass) for mass in dens])
+    )
+    upper_ci = [
+        scipy.stats.binom(n=n_simulations, p=mass).ppf(1 - (1.0 - level) / 2)
+        for mass in dens
+    ]
 
     pmf_data = pl.DataFrame(
-        {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
+        {
+            "cum_i_max": k + n_infected,
+            "n_expected": dens * n_simulations,
+            "lower_ci": lower_ci,
+            "upper_ci": upper_ci,
+        }
     )
 
     # do the state pmf --------------------------------------------------------
@@ -286,26 +300,40 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
                 )
             )
 
-            chart = line_chart | (hist_chart + pmf_chart)
+            pmf_error_bar_chart = (
+                alt.Chart(chart_data)
+                .mark_rule(color="#ff4b4b", clip=True)
+                .encode(
+                    alt.Y("cum_i_max"),
+                    alt.Y2("cum_i_max"),
+                    alt.X("lower_ci"),
+                    alt.X2("upper_ci"),
+                )
+            )
+
+            chart = line_chart | (hist_chart + pmf_chart + pmf_error_bar_chart)
 
     st.altair_chart(chart)
 
-    state_chart = (
-        alt.Chart(state_pmf.filter(pl.col("t") > 0))
-        .properties(title="Probability of no. of infections by generation")
-        .mark_rect()
-        .encode(
-            alt.X("t:N", title="Generation"),
-            alt.Y("Cumulative:N", sort="descending", title="Cumulative no. infected"),
-            color=alt.condition(
-                alt.datum.prob == 0,
-                alt.value("black"),
-                alt.Color("prob", title="Probability").bin(maxbins=10),
-            ),
+    if metric == "Cumulative":
+        state_chart = (
+            alt.Chart(state_pmf.filter(pl.col("t") > 0))
+            .properties(title="Probability of no. of infections by generation")
+            .mark_rect()
+            .encode(
+                alt.X("t:N", title="Generation"),
+                alt.Y(
+                    "Cumulative:N", sort="descending", title="Cumulative no. infected"
+                ),
+                color=alt.condition(
+                    alt.datum.prob == 0,
+                    alt.value("black"),
+                    alt.Color("prob", title="Probability").bin(maxbins=10),
+                ),
+            )
         )
-    )
 
-    st.altair_chart(state_chart)
+        st.altair_chart(state_chart)
 
 
 def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
@@ -318,6 +346,8 @@ def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
         ("cum_i_max", pdt.Int64),
         ("n_sims", pdt.Int64),
         ("n_expected", pdt.Float64),
+        ("lower_ci", pdt.Float64),
+        ("upper_ci", pdt.Float64),
     ]
 
     schema_cols = [x[0] for x in schema]
@@ -332,6 +362,13 @@ def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
             for name, type_ in schema
         ]
     ).select(schema_cols)
+
+
+def _binom_ci(n, p, level=0.95) -> tuple[float, float]:
+    a2 = (1.0 - level) / 2
+    values = scipy.stats.binom(n=n, p=p).ppf([a2, 1 - a2])
+    assert len(values) == 2
+    return (float(values[0]), float(values[1]))
 
 
 if __name__ == "__main__":
