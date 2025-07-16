@@ -1,20 +1,28 @@
+import abc
 import functools
+from typing import Any
 
 import numpy as np
 import scipy.special
 from numpy.typing import NDArray
 
 
-class ReedFrost:
-    """Reed-Frost model"""
+class ChainBinomial(abc.ABC):
+    """General chain binomial model"""
 
-    def __init__(self, s0: int, p: float, i0: int = 1):
+    def __init__(self, s0: int, params: dict[str, Any], i0: int = 1):
         assert s0 >= 0
-        assert 0.0 <= p <= 1.0
         assert i0 >= 0
+        self._validate_params(params)
+
         self.s0 = s0
-        self.p = p
         self.i0 = i0
+        self.params = params
+
+    @abc.abstractmethod
+    def _validate_params(self, params: dict[str, Any]) -> None:
+        """Validate parameters for the model"""
+        pass
 
     def prob_final_s(self, s_inf: int) -> float:
         """Probability of a certain final number of susceptibles"""
@@ -22,16 +30,12 @@ class ReedFrost:
         return self.prob_state(s=s_inf, i=0, t=self.s0 + 1)
 
     def prob_final_i_cum_extra(self, k: int) -> float:
-        """
-        Probability of a certain number of infection beyond the initial infection(s)
-        """
+        """Probability of a certain number of infection beyond the initial infection(s)"""
         assert k >= 0
         return self.prob_final_s(s_inf=self.s0 - k)
 
     def prob_final_i_cum(self, i_cum: int) -> float:
-        """
-        Probability of a certain number of total infections, including the initial infection(s)
-        """
+        """Probability of a certain number of total infections, including the initial infection(s)"""
         assert i_cum >= 0
         if i_cum < self.i0:
             return 0.0
@@ -40,7 +44,8 @@ class ReedFrost:
 
     @functools.cache
     def prob_state(self, s: int, i: int, t: int) -> float:
-        """Probability of being in state (s, i) at time t
+        """
+        Probability of being in state (s, i) at time t
 
         Args:
             s (int): number of susceptibles
@@ -63,7 +68,7 @@ class ReedFrost:
         elif t > 0:
             return sum(
                 [
-                    self._tp(i, s + i, ip, p=self.p) * self.prob_state(s + i, ip, t - 1)
+                    self._tp(i, s + i, ip) * self.prob_state(s + i, ip, t - 1)
                     for ip in range((self.s0 + self.i0) - (s + i) + 1)
                     if self.prob_state(s + i, ip, t - 1) > 0.0
                 ]
@@ -71,14 +76,20 @@ class ReedFrost:
         else:
             raise ValueError(f"Negative generation {t}")
 
-    @classmethod
     @functools.cache
-    def _tp(cls, i, si, ip, p: float) -> float:
-        return cls._pmf_binom(k=i, n=si, p=1.0 - (1.0 - p) ** ip)
+    def _tp(self, i, si, ip) -> float:
+        """Transition probability"""
+        return self._pmf_binom(k=i, n=si, p=self._pi(ip))
+
+    @abc.abstractmethod
+    def _pi(self, i: int) -> float:
+        """Probability of infection given i infected individuals"""
+        pass
 
     @staticmethod
     def _pmf_binom(k: int, n: int, p: float) -> float:
-        """Binomial distribution pmf
+        """
+        Binomial distribution pmf
 
         This implementation is substantially faster than scipy.stats.binom.pmf
 
@@ -96,7 +107,8 @@ class ReedFrost:
         self,
         rng: np.random.Generator = np.random.default_rng(),
     ) -> NDArray[np.integer]:
-        """Simulate a Reed-Frost outbreak
+        """
+        Simulate a Reed-Frost outbreak
 
         Args:
             rng (np.random.Generator): random number generator
@@ -118,8 +130,49 @@ class ReedFrost:
             if it[t] == 0:
                 break
 
-            next_i = rng.binomial(n=s, p=1.0 - (1.0 - self.p) ** it[t])
+            next_i = rng.binomial(n=s, p=self._pi(it[t]))
             it[t + 1] = next_i
             s = s - next_i
 
         return it
+
+
+class ReedFrost(ChainBinomial):
+    """Reed-Frost model"""
+
+    @staticmethod
+    def _validate_params(params: dict[str, Any]) -> None:
+        """Validate parameters for the Reed-Frost model"""
+        assert "p" in params
+        assert 0.0 <= params["p"] <= 1.0
+
+    def _pi(self, i: int) -> float:
+        return 1.0 - (1.0 - self.params["p"]) ** i
+
+
+class Greenwood(ChainBinomial):
+    """Greenwood model"""
+
+    @staticmethod
+    def _validate_params(params: dict[str, Any]) -> None:
+        """Validate parameters for the Greenwood model"""
+        assert "p" in params
+        assert 0.0 <= params["p"] <= 1.0
+
+    def _pi(self, i: int) -> float:
+        return self.params["p"] if i > 0 else 0.0
+
+
+class Enko(ChainBinomial):
+    """Enko model"""
+
+    @staticmethod
+    def _validate_params(params: dict[str, Any]) -> None:
+        """Validate parameters for the Enko model"""
+        assert "k" in params
+        assert params["k"] >= 0.0
+        assert "n" in params
+        assert params["n"] > 0.0
+
+    def _pi(self, i: int) -> float:
+        return 1.0 - (1.0 - i / (self.params["n"] - 1.0)) ** self.params["k"]

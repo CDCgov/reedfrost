@@ -5,7 +5,7 @@ import polars as pl
 import polars.datatypes as pdt
 import streamlit as st
 
-import reedfrost as rf
+import reedfrost
 
 
 def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
@@ -32,6 +32,13 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
             format="%.1f",
             value=min(1.5, float(n)),
         )
+
+        model = st.segmented_control(
+            "Model",
+            options=["Reed-Frost", "Enko", "Greenwood"],
+            default="Reed-Frost",
+        )
+        assert model is not None
 
         metric = st.segmented_control(
             "Infections metric",
@@ -81,13 +88,25 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
 
     # derived parameters
     n_susceptible = n - n_immune - n_infected
+    assert n_susceptible > 0
 
-    if n_susceptible == 0:
-        p = 0.0
-    else:
-        p = brn / n
+    match model:
+        case "Reed-Frost":
+            params = {"p": brn / n}
+            sim_class = reedfrost.ReedFrost
+        case "Greenwood":
+            params = {"p": brn / n}
+            sim_class = reedfrost.Greenwood
+        case "Enko":
+            params = {
+                "n": n,
+                "k": np.log(1.0 - brn / n) / np.log(1.0 - 1.0 / (n - 1.0)),
+            }
+            sim_class = reedfrost.Enko
+        case _:
+            raise ValueError(f"Unknown model: {model}")
 
-    sim = rf.ReedFrost(s0=n_susceptible, i0=n_infected, p=p)
+    sim = sim_class(s0=n_susceptible, i0=n_infected, params=params)
 
     # do the pmf --------------------------------------------------------------
     # additional no. infected
