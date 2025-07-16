@@ -175,4 +175,4 @@ class Enko(ChainBinomial):
         assert params["n"] > 0.0
 
     def _pi(self, i: int) -> float:
-        return 1.0 - (1.0 - 1.0 / (self.params["n"] - 1.0)) ** self.params["k"]
+        return 1.0 - (1.0 - i / (self.params["n"] - 1.0)) ** self.params["k"]
