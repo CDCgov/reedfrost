@@ -7,7 +7,7 @@ import streamlit as st
 import reedfrost
 
 
-def app(jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
+def app():
     st.title("Chain binomial model")
 
     with st.sidebar:
