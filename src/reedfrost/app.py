@@ -8,7 +8,14 @@ import streamlit as st
 import reedfrost
 
 
-def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
+def app(
+    opacity=0.5,
+    stroke_width=1.0,
+    jitter=0.1,
+    rect_half_height=0.25,
+    pmf_tol=0.02,
+    pmf_diff_tol=1e-3,
+):
     st.title("Reed-Frost model")
 
     with st.sidebar:
@@ -290,8 +297,36 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
 
     st.altair_chart(chart)
 
+    # state chart --------------------------------------------------------
+
+    # trim PMF data to a generation where we had small changes over generations
+    max_state_gen = (
+        state_pmf.sort(["Cumulative", "t"])
+        .with_columns(prob_diff=pl.col("prob").diff())
+        .filter(pl.col("t") > 0)
+        .group_by("t")
+        .agg(pl.col("prob_diff").max())
+        .filter(pl.col("prob_diff") > pmf_diff_tol)
+        .select(pl.col("t").max())
+        .item()
+    )
+
+    # trim PMF data to final sizes that have some minimal probability
+    max_state_size = (
+        state_pmf.filter(pl.col("prob") >= pmf_tol)
+        .select(pl.col("Cumulative").max())
+        .item()
+    )
+
+    assert max_state_gen >= 1
+
     state_chart = (
-        alt.Chart(state_pmf.filter(pl.col("t") > 0))
+        alt.Chart(
+            state_pmf.filter(
+                pl.col("t").is_between(1, max_state_gen),
+                pl.col("Cumulative") <= max_state_size,
+            )
+        )
         .properties(title="Probability of no. of infections by generation")
         .mark_rect()
         .encode(
