@@ -1,10 +1,18 @@
-# Reed-Frost model
+# Chain binomial models
 
 ## Overview
 
-This repo contains final size distributions for [Reed-Frost](https://en.wikipedia.org/wiki/Reed%E2%80%93Frost_model) outbreaks.
+Chain binomial models are relatively simple descriptions of disease spread in small populations.
+
+This includes tools for computing state probabilities, predicting the final size distribution, and simulating epidemic trajectories for the Reed-Frost, Greenwood, and En'ko models.
 
 ## Getting started
+
+### Docs
+
+Read the [docs online](https://cdcgov.github.io/reedfrost/).
+
+Documentation is built using [`mkdocs`](https://www.mkdocs.org/). View the documentation locally with `poetry run mkdocs serve`.
 
 ### Installation
 
@@ -14,36 +22,9 @@ This is a [poetry](https://python-poetry.org/)-enabled Python project:
 2. [Install poetry](https://python-poetry.org/docs/#installation).
 3. Install this package locally with `poetry install`.
 
-### Docs
-
-Read the [docs online](https://cdcgov.github.io/reedfrost/).
-
-Documentation is built using [`mkdocs`](https://www.mkdocs.org/). View the documentation locally with `poetry run mkdocs serve`.
-
 ### Local app
 
 Run the [Streamlit](https://streamlit.io/) app locally with `make local`.
-
-### Deployed app
-
-To deploy using [Posit Connect](https://docs.posit.co/connect/user/publishing-cli/):
-
-- Navigate to your Posit server
-- Request to be made a Publisher
-- Get an API key
-- Add the server:
-  ```
-  rsconnect add \
-    --server YOUR_SERVER \
-    --name NICKNAME \
-    --api-key YOUR_API_KEY
-  ```
-  You may need to add `--insecure` if you have certificate problems.
-- Check which versions of Python are installed on the server:
-  ```
-  rsconnect details -n NICKNAME
-  ```
-  Ensure that the app is developed against a compatible version of Python.
 
 ## Project admins
 
