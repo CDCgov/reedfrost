@@ -5,7 +5,7 @@ import polars as pl
 import polars.datatypes as pdt
 import streamlit as st
 
-import reedfrost as rf
+import reedfrost
 
 
 def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
@@ -87,7 +87,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
     else:
         p = brn / n
 
-    sim = rf.ReedFrost(s0=n_susceptible, i0=n_infected, p=p)
+    sim = reedfrost.ReedFrost(s0=n_susceptible, i0=n_infected, params={"p": p})
 
     # do the pmf --------------------------------------------------------------
     # additional no. infected
