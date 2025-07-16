@@ -2,18 +2,16 @@ import altair as alt
 import numpy as np
 import numpy.random
 import polars as pl
-import polars.datatypes as pdt
-import scipy.stats
 import streamlit as st
 
 import reedfrost
 
 
-def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
+def app():
     st.set_page_config(
         page_title="Chain binomial models", page_icon="🧮", layout="wide"
     )
-    st.title("Reed-Frost model")
+    st.title("Chain binomial model")
 
     with st.sidebar:
         st.header("Input parameters")
@@ -43,13 +41,6 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
             default="Reed-Frost",
         )
         assert model is not None
-
-        metric = st.segmented_control(
-            "Infections metric",
-            options=["Cumulative", "Incident"],
-            default="Cumulative",
-        )
-        assert metric is not None
 
         with st.expander("Advanced options", expanded=False):
             # need special handling for the case where everyone is immune but 1,
@@ -90,7 +81,7 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
-    # derived parameters
+    # derived parameters ------------------------------------------------------
     n_susceptible = n - n_immune - n_infected
     assert n_susceptible > 0
 
@@ -112,222 +103,90 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
 
     sim = sim_class(s0=n_susceptible, i0=n_infected, params=params)
 
-    # do the pmf --------------------------------------------------------------
-    # additional no. infected
-    k = np.array(range(n_susceptible + 1))
-    dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
-    level = 0.95
-    lower_ci, upper_ci = list(
-        zip(*[_binom_ci(n=n_simulations, p=mass) for mass in dens])
-    )
-    upper_ci = [
-        scipy.stats.binom(n=n_simulations, p=mass).ppf(1 - (1.0 - level) / 2)
-        for mass in dens
-    ]
-
-    pmf_data = pl.DataFrame(
-        {
-            "cum_i_max": k + n_infected,
-            "n_expected": dens * n_simulations,
-            "lower_ci": lower_ci,
-            "upper_ci": upper_ci,
-        }
-    )
-
-    # do the state pmf --------------------------------------------------------
-    state_pmf = pl.from_dicts(
-        [
-            {
-                "s": s,
-                "Cumulative": n_infected + (n_susceptible - s),
-                "t": t,
-                "prob": sum(
-                    [sim.prob_state(s, i, t) for i in range(n_susceptible + 1)]
-                ),
-            }
-            for s in range(n_susceptible + 1)
-            for t in range(n_susceptible + 1)
-        ]
-    )
-
-    # run the simulations ---------------------------------------------------
-    rng = numpy.random.default_rng(seed)
-
-    # get one numpy array, representing a timeseries of infections
-    # per generation, for each simulation
-    simulations = [sim.simulate(rng=child) for child in rng.spawn(n_simulations)]
-
-    # combine into a dataframe
-    sim_data = (
-        pl.concat(
-            [
-                pl.DataFrame({"iter": k, "t": range(len(x)), "Incident": x})
-                for k, x in enumerate(simulations)
-            ]
-        )
-        .sort(["iter", "t"])
-        # convert to cumulative infections
-        .with_columns(pl.col("Incident").cum_sum().over("iter").alias("Cumulative"))
-    )
-
-    # remove entries where no infections occurred
-    last_gen = sim_data.filter(pl.col("Incident") > 0).select(pl.col("t").max()).item()
-    sim_data = sim_data.filter(pl.col("t") <= last_gen)
-
-    count_data = (
-        sim_data.group_by("iter")
-        .agg(pl.col("Cumulative").max().alias("cum_i_max"))
-        .group_by("cum_i_max")
-        .agg(pl.len().alias("n_sims"))
-    )
-
-    # ensure that count data have all the possible values
-    count_data = (
-        pl.DataFrame(
-            {"cum_i_max": list(range(n_infected, n_infected + n_susceptible + 1))}
-        )
-        .join(count_data, on="cum_i_max", how="left")
-        .with_columns(pl.col("n_sims").fill_null(0))
-    )
-
-    # get maximum cumulative infections in each iteration, and put that data only
-    # in the first timepoint
-    max_i_data = sim_data.group_by("iter").agg(
-        pl.col("Cumulative").max().alias("cum_i_max")
-    )
-
-    # Combine the different data into a single frame, which helps altair
-    # create the common y-axis.
-    # Instead of a bar chart, set up rectangles, because altair only does
-    # horizontal bar charts with non-quantitative y-axis values, which
-    # messes up the common y-axis.
-    chart_data = pl.concat(
-        [_enforce_schema(df) for df in [sim_data, count_data, pmf_data, max_i_data]],
-        how="vertical",
-    ).with_columns(
-        rect_x=0.0,
-        rect_x2=pl.col("n_sims"),
-        rect_y=pl.col("cum_i_max") - rect_half_height,
-        rect_y2=pl.col("cum_i_max") + rect_half_height,
-    )
-
-    # add jitter to avoid overlapping lines
-    if jitter > 0:
-        chart_data = chart_data.with_columns(
-            pl.col("Cumulative", "Incident", "t")
-            + pl.Series("jitter", rng.uniform(-jitter, jitter, chart_data.height))
-        )
-
-    # common features for multiple charts
-    max_y_line = sim_data.select(pl.col(metric).max()).item()
-    max_y_pmf = (
-        pmf_data.filter(pl.col("n_expected") >= pmf_tol)
-        .select(pl.col("cum_i_max").max())
-        .item()
-    )
-    max_y = max(max_y_line, max_y_pmf) + 1
-    # common name for cum_i_max
-    cum_i_max_title = "Final cumulative no. infected"
-    # common scale
-    y_scale = alt.Scale(domain=[0, max_y])
-    y_axis = alt.Axis(tickCount=last_gen + 1)
-
-    line_chart = (
-        alt.Chart(chart_data)
-        .properties(title="Simulated outbreaks")
-        .encode(
-            # need +1 because generations are zero-indexed; if last gen is 0, that's
-            # one generation
-            alt.X(
-                "t",
-                title="Generation",
-                axis=alt.Axis(tickCount=last_gen + 1),
-                scale=alt.Scale(domain=[0, last_gen]),
-            ),
-            alt.Y(
-                metric,
-                title=f"{metric} no. infected",
-                axis=y_axis,
-                scale=y_scale,
-            ),
-            alt.Detail("iter"),
-        )
-        .mark_line(opacity=opacity, strokeWidth=stroke_width)
-    )
-
+    # display initial conditions ----------------------------------------------
     st.subheader("Initial conditions")
     col1, col2, col3 = st.columns([1, 1, 1])
     col1.text(f"Initial susceptible: {n_susceptible}")
     col2.text(f"Initial immune: {n_immune}")
     col3.text(f"Initial infected: {n_infected}")
 
+    # display inputs ---------------------------------------------------------
+    st.subheader("Display inputs")
+    col1, col2 = st.columns([1, 1])
+    metric = col1.segmented_control(
+        "Infections metric",
+        options=["Cumulative", "Incident"],
+        default="Cumulative",
+    )
+    assert metric is not None
+
+    result_type = col2.segmented_control(
+        "Results type",
+        options=["Trajectories", "Theoretical"],
+        default="Trajectories",
+    )
+    assert result_type is not None
+
     st.subheader("Results")
-    match metric:
-        case "Incident":
-            chart = line_chart
-        case "Cumulative":
-            hist_chart = (
-                alt.Chart(chart_data)
-                .properties(title="Final size distribution")
-                .mark_rect()
-                .encode(
-                    alt.X("rect_x", title="No. simulations"),
-                    alt.X2("rect_x2"),
-                    alt.Y("rect_y", title=cum_i_max_title, scale=y_scale, axis=y_axis),
-                    alt.Y2("rect_y2"),
-                    tooltip=[
-                        alt.Tooltip("cum_i_max", title=cum_i_max_title),
-                        alt.Tooltip("n_sims", title="No. simulations"),
-                    ],
-                )
-            )
+    if result_type == "Trajectories":
+        trajectories_chart(
+            sim=sim,
+            n_simulations=n_simulations,
+            metric=metric,
+            seed=seed,
+        )
+    elif result_type == "Theoretical":
+        theoretical_chart(
+            sim=sim,
+            n_susceptible=n_susceptible,
+            n_infected=n_infected,
+            n_simulations=n_simulations,
+            metric=metric,
+        )
+    else:
+        raise ValueError(f"Unknown result type: {result_type}")
 
-            pmf_chart = (
-                alt.Chart(chart_data)
-                .mark_line(
-                    color="#ff4b4b",
-                    clip=True,
-                    point=alt.OverlayMarkDef(color="red", size=50),
-                )
-                .encode(
-                    alt.Y("cum_i_max", scale=y_scale, axis=y_axis),
-                    alt.X("n_expected"),
-                    # I would have expected to order by cum_i_max, but `iter` works?
-                    alt.Order("iter"),
-                    tooltip=[
-                        alt.Tooltip("cum_i_max", title=cum_i_max_title),
-                        alt.Tooltip(
-                            "n_expected", title="Expected no. simulations", format=".2f"
-                        ),
-                    ],
-                )
-            )
 
-            pmf_error_bar_chart = (
-                alt.Chart(chart_data)
-                .mark_rule(color="#ff4b4b", clip=True)
-                .encode(
-                    alt.Y("cum_i_max"),
-                    alt.Y2("cum_i_max"),
-                    alt.X("lower_ci"),
-                    alt.X2("upper_ci"),
-                )
-            )
+def theoretical_chart(
+    sim: reedfrost.ChainBinomial,
+    n_susceptible: int,
+    n_infected: int,
+    n_simulations: int,
+    metric: str,
+):
+    # do the final size pmf ---------------------------------------------------
+    # additional no. infected
+    k = np.array(range(n_susceptible + 1))
+    dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
 
-            chart = line_chart | (hist_chart + pmf_chart + pmf_error_bar_chart)
+    final_data = pl.DataFrame(
+        {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
+    )
 
-    st.altair_chart(chart)
+    # do the state pmf --------------------------------------------------------
 
-    if metric == "Cumulative":
+    if metric == "Incident":
+        state_data = pl.from_dicts(
+            [
+                {
+                    "Incident": i,
+                    "t": t,
+                    "prob": sum(
+                        [sim.prob_state(s, i, t) for s in range(n_susceptible + 1)]
+                    ),
+                }
+                for i in range(n_susceptible + 1)
+                for t in range(n_susceptible + 1)
+            ]
+        ).filter(pl.col("t") > 0)
+
         state_chart = (
-            alt.Chart(state_pmf.filter(pl.col("t") > 0))
+            alt.Chart(state_data)
             .properties(title="Probability of no. of infections by generation")
             .mark_rect()
             .encode(
-                alt.X("t:N", title="Generation"),
-                alt.Y(
-                    "Cumulative:N", sort="descending", title="Cumulative no. infected"
-                ),
+                alt.X("t:O", title="Generation"),
+                alt.Y(f"{metric}:O", sort="descending", title=f"{metric} no. infected"),
                 color=alt.condition(
                     alt.datum.prob == 0,
                     alt.value("black"),
@@ -337,41 +196,133 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
         )
 
         st.altair_chart(state_chart)
+    elif metric == "Cumulative":
+        state_data = pl.from_dicts(
+            [
+                {
+                    "Cumulative": n_infected + (n_susceptible - s),
+                    "t": t,
+                    "prob": sum(
+                        [sim.prob_state(s, i, t) for i in range(n_susceptible + 1)]
+                    ),
+                }
+                for s in range(n_susceptible + 1)
+                for t in range(n_susceptible + 1)
+            ]
+        ).filter(pl.col("t") > 0)
+
+        state_chart = (
+            alt.Chart(state_data)
+            .properties(title="Probability of no. of infections by generation")
+            .mark_rect()
+            .encode(
+                alt.X("t:O", title="Generation"),
+                alt.Y(f"{metric}:O", sort="descending", title=f"{metric} no. infected"),
+                alt.Color("prob", title="Probability").bin(maxbins=10),
+            )
+        )
+
+        final_chart = (
+            alt.Chart(final_data)
+            .mark_bar()
+            .encode(alt.Y("cum_i_max:O", sort="descending"), alt.X("n_expected"))
+        )
+        st.altair_chart(state_chart | final_chart)
+    else:
+        raise ValueError(f"Unknown metric: {metric}")
 
 
-def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
-    """Ensure data frame has the expected columns, adding null columns as needed"""
-    schema = [
-        ("iter", pdt.Int64),
-        ("t", pdt.Int64),
-        ("Incident", pdt.Int64),
-        ("Cumulative", pdt.Int64),
-        ("cum_i_max", pdt.Int64),
-        ("n_sims", pdt.Int64),
-        ("n_expected", pdt.Float64),
-        ("lower_ci", pdt.Float64),
-        ("upper_ci", pdt.Float64),
-    ]
+def trajectories_chart(
+    sim: reedfrost.ChainBinomial,
+    n_simulations: int,
+    seed: int,
+    metric: str,
+    opacity: float = 0.5,
+    stroke_width: float = 1.0,
+    jitter: float = 0.1,
+):
+    # run the simulations ---------------------------------------------------
+    rng = numpy.random.default_rng(seed)
 
-    schema_cols = [x[0] for x in schema]
-    assert set(df.columns).issubset(schema_cols)
-    new_cols = set(schema_cols) - set(df.columns)
+    # get one numpy array, representing a timeseries of infections
+    # per generation, for each simulation
+    simulations = [sim.simulate(rng=child) for child in rng.spawn(n_simulations)]
 
-    return df.select(
-        *[
-            pl.lit(None).alias(name).cast(type_)
-            if name in new_cols
-            else pl.col(name).cast(type_)
-            for name, type_ in schema
+    # combine those simulations into a dataframe, making trajectories
+    traj_data = pl.concat(
+        [
+            pl.DataFrame({"iter": k, "t": range(len(x)), "i": x})
+            for k, x in enumerate(simulations)
         ]
-    ).select(schema_cols)
+    )
 
+    # remove entries where no infections occurred
+    last_gen = traj_data.filter(pl.col("i") > 0).select(pl.col("t").max()).item()
+    traj_data = traj_data.filter(pl.col("t") <= last_gen)
 
-def _binom_ci(n, p, level=0.95) -> tuple[float, float]:
-    a2 = (1.0 - level) / 2
-    values = scipy.stats.binom(n=n, p=p).ppf([a2, 1 - a2])
-    assert len(values) == 2
-    return (float(values[0]), float(values[1]))
+    if metric == "Incident":
+        # use just incident infections
+        traj_data = traj_data.with_columns(y=pl.col("i"))
+    elif metric == "Cumulative":
+        # convert to cumulative infections
+        traj_data = traj_data.sort(["iter", "t"]).with_columns(
+            pl.col("i").cum_sum().over("iter").alias("y")
+        )
+    else:
+        raise ValueError(f"Unknown metric: {metric}")
+
+    # add peak y value by iteration
+    traj_data = traj_data.with_columns(
+        is_peak=(pl.col("y") == pl.col("y").max()).over("iter")
+    )
+
+    # find the maximum y value over all iterations
+    max_y = traj_data.select(pl.col("y").max()).item() + 1
+    y_axis = alt.Axis(tickCount=max_y + 1)
+    y_scale = alt.Scale(domain=[0, max_y])
+
+    # add jitter
+    traj_data = traj_data.with_columns(
+        y_jitter=pl.col("y")
+        + pl.Series("jitter", rng.uniform(-jitter, jitter, traj_data.height))
+    )
+
+    line_chart = (
+        alt.Chart(traj_data)
+        .properties(title="Simulated outbreaks")
+        .encode(
+            # need +1 because generations are zero-indexed; if last gen is 0, that's
+            # one generation
+            alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
+            alt.Y(
+                "y_jitter", title=f"{metric} no. infected", axis=y_axis, scale=y_scale
+            ),
+            alt.Detail("iter"),
+        )
+        .mark_line(opacity=opacity, strokeWidth=stroke_width)
+    )
+
+    hist_chart = (
+        alt.Chart(traj_data)
+        .transform_calculate(y2=alt.datum.y - 0.5)
+        .transform_filter(alt.datum.is_peak)
+        .properties(title=f"Maximum {metric} distribution")
+        .mark_bar()
+        .encode(
+            alt.X("count()", title="No. simulations"),
+            alt.Y(
+                "y2:Q",
+                bin=alt.Bin(step=1.0),
+                title=f"{metric} no. infected",
+                scale=y_scale,
+                axis=y_axis,
+            ),
+        )
+    )
+
+    chart = line_chart | hist_chart
+
+    st.altair_chart(chart)
 
 
 if __name__ == "__main__":
