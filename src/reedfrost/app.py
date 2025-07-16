@@ -114,10 +114,9 @@ def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_to
     k = np.array(range(n_susceptible + 1))
     dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
     level = 0.95
-    lower_ci = [
-        scipy.stats.binom(n=n_simulations, p=mass).ppf((1.0 - level) / 2)
-        for mass in dens
-    ]
+    lower_ci, upper_ci = list(
+        zip(*[_binom_ci(n=n_simulations, p=mass) for mass in dens])
+    )
     upper_ci = [
         scipy.stats.binom(n=n_simulations, p=mass).ppf(1 - (1.0 - level) / 2)
         for mass in dens
@@ -363,6 +362,13 @@ def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
             for name, type_ in schema
         ]
     ).select(schema_cols)
+
+
+def _binom_ci(n, p, level=0.95) -> tuple[float, float]:
+    a2 = (1.0 - level) / 2
+    values = scipy.stats.binom(n=n, p=p).ppf([a2, 1 - a2])
+    assert len(values) == 2
+    return (float(values[0]), float(values[1]))
 
 
 if __name__ == "__main__":
