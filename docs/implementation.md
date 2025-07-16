@@ -6,31 +6,17 @@ The dynamic programming approach is more numerically stable but has $\mathcal{O}
 
 ## Dynamic programming approach
 
-Let $f_{S_\infty}(s_\infty; s, i, p)$ be the probability that the final number of susceptibles is $s_\infty$ given that the current state of the population is $S = s$, $I = i$, and the per-person infection probability is $p$.
-We can express this as a recursive relationship with boundary conditions, yielding
+See first the [model description](chain_binomial.md).
+
+Let $P(s, i, t)$ be the probability of being in state $(s, i)$ in generation $t$. Begin from an initial state, setting $P(s_0, i_0, 0) = 1$. Then iteratively generate:
 
 ```math
-f_{S_\infty}(s_\infty; s, i, p) = \begin{cases}
-  1 & i = 0 \text{ and } s_\infty = s \\
-  0 & i = 0 \text{ and } s_\infty \neq s \\
-  0 & i > 0 \text{ and } s < s_\infty \\
-  \sum_{j=0}^{s-s_\infty} \text{Pr}(j \mid s, i, p) \times f_{S_\infty}(s_\infty; s-j, j, p) & \text{otherwise}
-\end{cases}
+P(s, i, t) = \sum_{i'=0}^{s_0-s-i} f_\mathrm{Binom}(i; s+i, \pi(i') ) \cdot P(s + i, i', t - 1)
 ```
-where $\text{Pr}(j \mid s, i, p)$ is the Reed-Frost transition probability mass function, $f_\mathrm{binom}\left(j; s, 1-(1-p)^i\right)$.
 
-In other words:
-- If the outbreak is over:
-  - The current and final number of remaining susceptibles must be the same.
-- If the outbreak is not over,
-  - The current number of susceptibles cannot be smaller than the final number of susceptibles.
-  - For valid current sizes, we can compute the conditional final size probability given the current population state as a sum over the conditional final size probabilities given all states we can reach in one step times the probability of reaching that state in one step. This is akin to playing out the epidemic process, computing the probability as a chain of conditionals. However, writing it out this way allows us to start at the end and work backwards dynamically.
+### Final size
 
-The probability mass function for the number $k$ of infections beyond the initial $I_0 = i$, is:
-
-```math
-f(k; s, i, p) = f_{S_\infty}(s - k; s, i, p)
-```
+By time $t=s_0+1$, we are guaranteed to have $i=0$, because the longest time to extinction will occur when there is 1 infection in each generation. Thus, $P(s_\infty, 0, s_0+1)$ is the distribution of final sizes, parameterized by the number of remaining susceptibles $s_\infty$. The cumulative number of infections is $i_0 + (s_0 - s_\infty)$.
 
 ## Lefevre & Picard approach
 
@@ -51,7 +37,7 @@ where:
 
 ### Gontcharoff polynomials
 
-In general, the Gontcharoff polynomials are (cf. equation 2.1):
+In general, the Gontcharoff polynomials are (cf. Lefevre & Picard equation 2.1):
 
 ```math
 G_k(x | U) = \begin{cases}

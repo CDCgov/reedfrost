@@ -1,7 +1,7 @@
 MANIFEST_FILES = manifest.json requirements.txt
 SOURCE_FILES := src/reedfrost/__init__.py src/reedfrost/app.py
 
-.PHONY: local deploy clean
+.PHONY: local deploy clean docs
 
 local:
 	poetry run streamlit run src/reedfrost/app.py
@@ -21,3 +21,6 @@ manifest.json requirements.txt: $(SOURCE_FILES)
 
 clean:
 	rm -f $(MANIFEST_FILES)
+
+docs:
+	poetry run mkdocs serve

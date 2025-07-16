@@ -12,7 +12,7 @@ This includes tools for computing state probabilities, predicting the final size
 
 Read the [docs online](https://cdcgov.github.io/reedfrost/).
 
-Documentation is built using [`mkdocs`](https://www.mkdocs.org/). View the documentation locally with `poetry run mkdocs serve`.
+Documentation is built using [`mkdocs`](https://www.mkdocs.org/). View the documentation locally with `make docs`.
 
 ### Installation
 

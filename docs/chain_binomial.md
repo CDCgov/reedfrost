@@ -16,7 +16,7 @@ P(S_t, I_t | S_{t-1}, I_{t-1}) \ldots P(S_1, I_1 | S_0, I_0)
 - $S_t = S_{t-1} - I_t$. The number of susceptibles is non-increasing.
 - There is some stopping time $\tau$ such that $I_t=0$ and $S_t = S_\tau$ for all $t \geq \tau$.
 
-## Specific models
+## Models
 
 ### Reed-Frost
 
@@ -54,15 +54,3 @@ In this case, $R_0 = n \left[ 1 - \left(1 - \tfrac{1}{n-1}\right)^k \right]$, fr
 ```math
 k = \frac{\log (1 - R_0/n)}{\log [1 - 1/(n-1)]}
 ```
-
-## Implementation
-
-Let $P(s, i, t)$ be the probability of being in state $(s, i)$ in generation $t$. Begin from an initial state, setting $P(s_0, i_0, 0) = 1$. Then iteratively generate:
-
-```math
-P(s, i, t) = \sum_{i'=0}^{s_0-s-i} f_\mathrm{Binom}(i; s+i, \pi(i') ) \cdot P(s + i, i', t - 1)
-```
-
-### Final size
-
-By time $t=s_0+1$, we are guaranteed to have $i=0$, because the longest time to extinction will occur when there is 1 infection in each generation. Thus, $P(s_\infty, 0, s_0+1)$ is the distribution of final sizes, parameterized by the number of remaining susceptibles $s_\infty$. The cumulative number of infections is $i_0 + (s_0 - s_\infty)$.
