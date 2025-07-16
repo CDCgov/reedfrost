@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "reedfrost"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reed-Frost disease dynamics"
 authors = ["Scott Olesen <ulp7@cdc.gov>"]
 license = "Apache 2"
