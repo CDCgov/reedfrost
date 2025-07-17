@@ -70,6 +70,14 @@ def app():
                 value=42,
             )
 
+            max_n_bins = st.slider(
+                "Maximum no. of bins for theoretical results",
+                min_value=10,
+                max_value=100,
+                step=1,
+                value=10,
+            )
+
         st.divider()
         st.header("Links")
 
@@ -139,6 +147,7 @@ def app():
             n_infected=n_infected,
             n_simulations=n_simulations,
             metric=metric,
+            max_n_bins=max_n_bins,
         )
     else:
         raise ValueError(f"Unknown result type: {result_type}")
@@ -150,6 +159,7 @@ def theoretical_chart(
     n_infected: int,
     n_simulations: int,
     metric: str,
+    max_n_bins: int,
 ):
     # do the final size pmf ---------------------------------------------------
     # additional no. infected
@@ -158,24 +168,28 @@ def theoretical_chart(
 
     final_data = pl.DataFrame(
         {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
-    )
+    ).pipe(_bin_data, "cum_i_max", "n_expected", max_n_bins)
 
     # do the state pmf --------------------------------------------------------
 
     if metric == "Incident":
-        state_data = pl.from_dicts(
-            [
-                {
-                    "Incident": i,
-                    "t": t,
-                    "prob": sum(
-                        [sim.prob_state(s, i, t) for s in range(n_susceptible + 1)]
-                    ),
-                }
-                for i in range(n_susceptible + 1)
-                for t in range(n_susceptible + 1)
-            ]
-        ).filter(pl.col("t") > 0)
+        state_data = (
+            pl.from_dicts(
+                [
+                    {
+                        "Incident": i,
+                        "t": t,
+                        "prob": sum(
+                            [sim.prob_state(s, i, t) for s in range(n_susceptible + 1)]
+                        ),
+                    }
+                    for i in range(n_susceptible + 1)
+                    for t in range(n_susceptible + 1)
+                ]
+            )
+            .filter(pl.col("t") > 0)
+            .pipe(_bin_data, "Incident", "prob", max_n_bins, group_cols=["t"])
+        )
 
         state_chart = (
             alt.Chart(state_data)
@@ -183,7 +197,11 @@ def theoretical_chart(
             .mark_rect()
             .encode(
                 alt.X("t:O", title="Generation"),
-                alt.Y(f"{metric}:O", sort="descending", title=f"{metric} no. infected"),
+                alt.Y(
+                    "Incident:O",
+                    sort=state_data["Incident"].to_list(),
+                    title=f"{metric} no. infected",
+                ),
                 color=alt.condition(
                     alt.datum.prob == 0,
                     alt.value("black"),
@@ -194,19 +212,29 @@ def theoretical_chart(
 
         st.altair_chart(state_chart)
     elif metric == "Cumulative":
-        state_data = pl.from_dicts(
-            [
-                {
-                    "Cumulative": n_infected + (n_susceptible - s),
-                    "t": t,
-                    "prob": sum(
-                        [sim.prob_state(s, i, t) for i in range(n_susceptible + 1)]
-                    ),
-                }
-                for s in range(n_susceptible + 1)
-                for t in range(n_susceptible + 1)
-            ]
-        ).filter(pl.col("t") > 0)
+        state_data = (
+            pl.from_dicts(
+                [
+                    {
+                        "Cumulative": n_infected + (n_susceptible - s),
+                        "t": t,
+                        "prob": sum(
+                            [sim.prob_state(s, i, t) for i in range(n_susceptible + 1)]
+                        ),
+                    }
+                    for s in range(n_susceptible + 1)
+                    for t in range(n_susceptible + 1)
+                ]
+            )
+            .filter(pl.col("t") > 0)
+            .pipe(
+                _bin_data,
+                "Cumulative",
+                "prob",
+                max_n_bins,
+                group_cols=["t"],
+            )
+        )
 
         state_chart = (
             alt.Chart(state_data)
@@ -214,15 +242,27 @@ def theoretical_chart(
             .mark_rect()
             .encode(
                 alt.X("t:O", title="Generation"),
-                alt.Y(f"{metric}:O", sort="descending", title=f"{metric} no. infected"),
+                alt.Y(
+                    "Cumulative:O",
+                    sort=state_data["Cumulative"].to_list(),
+                    title="Cumulative no. infected",
+                ),
                 alt.Color("prob", title="Probability").bin(maxbins=10),
             )
         )
 
         final_chart = (
             alt.Chart(final_data)
+            .properties(title="Total no. of infections")
             .mark_bar()
-            .encode(alt.Y("cum_i_max:O", sort="descending"), alt.X("n_expected"))
+            .encode(
+                alt.Y(
+                    "cum_i_max:O",
+                    sort=final_data["cum_i_max"].to_list(),
+                    title="Cumulative no. infected",
+                ),
+                alt.X("n_expected"),
+            )
         )
         st.altair_chart(state_chart | final_chart)
     else:
@@ -320,6 +360,47 @@ def trajectories_chart(
     chart = line_chart | hist_chart
 
     st.altair_chart(chart)
+
+
+def _bin_data(
+    df: pl.DataFrame,
+    k_col: str,
+    value_col: str,
+    max_n_bins: int,
+    group_cols: list[str] = [],
+) -> pl.DataFrame:
+    k_unique = df[k_col].unique().to_list()
+    if len(k_unique) <= max_n_bins:
+        return df
+
+    bin_cuts = np.linspace(0, max(k_unique) + 1, num=max_n_bins + 1).round().astype(int)
+    labels = (
+        ["<0"]
+        + [
+            _range_label(bin_cuts[i], bin_cuts[i + 1] - 1)
+            for i in range(len(bin_cuts) - 1)
+        ]
+        + [f">{max(bin_cuts)}"]
+    )
+
+    return (
+        df.group_by(
+            pl.col(k_col)
+            .cut(bin_cuts, include_breaks=True, left_closed=True, labels=labels)
+            .struct.rename_fields([k_col + "_break", k_col]),
+            *group_cols,
+        )
+        .agg(pl.col(value_col).sum())
+        .unnest(k_col)
+        .sort(k_col + "_break", descending=True)
+    )
+
+
+def _range_label(x: int, y: int) -> str:
+    if x == y:
+        return f"{x}"
+    else:
+        return f"{x}-{y}"
 
 
 if __name__ == "__main__":
