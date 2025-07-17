@@ -10,6 +10,9 @@ import reedfrost
 
 
 def app(opacity=0.5, stroke_width=1.0, jitter=0.1, rect_half_height=0.25, pmf_tol=0.02):
+    st.set_page_config(
+        page_title="Chain binomial models", page_icon="🧮", layout="wide"
+    )
     st.title("Reed-Frost model")
 
     with st.sidebar:
