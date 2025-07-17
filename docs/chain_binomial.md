@@ -1,4 +1,4 @@
-# Chain binomial models
+# Model descriptions
 
 Chain binomial models are discrete time, discrete person, two-dimensional Markov chain models. Epidemiologically, these models track numbers of susceptibles $S_t$ and infected $I_t$ in each generation $t$.
 
@@ -54,3 +54,21 @@ In this case, $R_0 = n \left[ 1 - \left(1 - \tfrac{1}{n-1}\right)^k \right]$, fr
 ```math
 k = \frac{\log (1 - R_0/n)}{\log [1 - 1/(n-1)]}
 ```
+
+## Implementation
+
+Let $P(s, i, t)$ be the probability of being in state $(s, i)$ in generation $t$. Begin from an initial state, setting $P(s_0, i_0, 0) = 1$. Then iteratively generate:
+
+```math
+P(s, i, t) = \sum_{i'=0}^{s_0-s-i} f_\mathrm{Binom}(i; s+i, \pi(i') ) \cdot P(s + i, i', t - 1)
+```
+
+These values can then be summarized to generate outcomes like final size distributions and the probability of intermediate states.
+
+This implementation has $\mathcal{O}(n^3)$ complexity, which in practice is not limiting for simulations with $n \lesssim 100$.
+
+### Alternative implementations
+
+[Lefevre & Picard (1990)](https://www.doi.org/10.2307/1427595) describe a $\mathcal{O}(n)$ algorithm for computing the final size distribution of Reed-Frost outbreaks. In practice, we found that this approach suffers from problems with overflows and numerical instability that were less tractable than the memory and time challenges with the dynamic programming approach. This approach also does not permit the use of different chain binomial models or the intermediate state probability calculations.
+
+[Barbour & Utev (2004)](https://ideas.repec.org/a/eee/spapps/v113y2004i2p173-197.html) describe a $\mathcal{O}(n)$ algorithm for computing an approximation of the final size distribution that is valid for large Reed-Frost outbreaks. This approach is tractable and numerically stable, but it is limited to large outbreaks, does not permit the use of different chain binomial models or the intermediate state probability calculations.
