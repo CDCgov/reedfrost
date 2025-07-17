@@ -372,11 +372,12 @@ def _bin_data(
     max_n_bins: int,
     group_cols: list[str] = [],
 ) -> pl.DataFrame:
-    k_unique = df[k_col].unique().to_list()
-    if len(k_unique) <= max_n_bins:
-        return df
+    k = df[k_col]
+    assert min(k) >= 0
 
-    bin_cuts = np.linspace(0, max(k_unique) + 1, num=max_n_bins + 1).round().astype(int)
+    n_bins = max_n_bins if max(k) + 1 > max_n_bins else max(k) + 1
+    bin_cuts = np.linspace(0, max(k) + 1, num=n_bins + 1).round().astype(int)
+
     labels = (
         ["<0"]
         + [
