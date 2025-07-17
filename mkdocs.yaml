@@ -3,7 +3,6 @@ site_name: reedfrost
 nav:
   - index.md
   - chain_binomial.md
-  - implementation.md
   - api.md
 
 repo_url: https://github.com/cdcgov/reedfrost

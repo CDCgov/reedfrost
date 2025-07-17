@@ -6,8 +6,4 @@ The package and app calculate:
 2. the distribution of final outbreak sizes, and
 3. simulations of individual outbreaks.
 
-Read about:
-
-- [the models and their mathematics](chain_binomial.md)
-- the [implementation decisions](implementation.md), explaining how the mathematics are coded up, and
-- the [API reference](api.md)
+Read more about [the models and their mathematics](chain_binomial.md).
