@@ -155,6 +155,8 @@ def theoretical_chart(
     metric: str,
     min_bins: int = 10,
     max_bins: int = 20,
+    prob_diff_eps: float = 0.005,
+    prob_bins: int = 10,
 ):
     # do the final size pmf ---------------------------------------------------
     # additional no. infected
@@ -199,8 +201,10 @@ def theoretical_chart(
             )
         )
 
+        last_gen = _last_gen_by_prob_change(state_data, "Incident", prob_diff_eps)
+
         state_chart = (
-            alt.Chart(state_data)
+            alt.Chart(state_data.filter(pl.col("t") <= last_gen))
             .properties(title="Probability of no. of infections by generation")
             .mark_rect()
             .encode(
@@ -213,7 +217,7 @@ def theoretical_chart(
                 color=alt.condition(
                     alt.datum.prob == 0,
                     alt.value("black"),
-                    alt.Color("prob", title="Probability").bin(maxbins=10),
+                    alt.Color("prob", title="Probability").bin(maxbins=prob_bins),
                 ),
             )
         )
@@ -245,8 +249,10 @@ def theoretical_chart(
             )
         )
 
+        last_gen = _last_gen_by_prob_change(state_data, "Cumulative", prob_diff_eps)
+
         state_chart = (
-            alt.Chart(state_data)
+            alt.Chart(state_data.filter(pl.col("t") <= last_gen))
             .properties(title="Probability of no. of infections by generation")
             .mark_rect()
             .encode(
@@ -256,7 +262,7 @@ def theoretical_chart(
                     sort=state_data["Cumulative"].to_list(),
                     title="Cumulative no. infected",
                 ),
-                alt.Color("prob", title="Probability").bin(maxbins=10),
+                alt.Color("prob", title="Probability").bin(maxbins=prob_bins),
             )
         )
 
@@ -448,6 +454,21 @@ def _range_label(x: int, y: int) -> str:
         return f"{x}"
     else:
         return f"{x}-{y}"
+
+
+def _last_gen_by_prob_change(
+    df, group: str, eps: float, value: str = "prob", t: str = "t"
+) -> int:
+    return (
+        df.sort([group, t])
+        .with_columns(diff=pl.col(value).diff().over(group))
+        .filter(pl.col(t) > 0)
+        .group_by(t)
+        .agg(pl.col("diff").abs().sum())
+        .filter(pl.col("diff") > eps)
+        .select(pl.col(t).max())
+        .item()
+    )
 
 
 if __name__ == "__main__":
