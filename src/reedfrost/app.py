@@ -73,14 +73,6 @@ def app():
                 value=42,
             )
 
-            max_n_bins = st.slider(
-                "Maximum no. of bins for theoretical results",
-                min_value=10,
-                max_value=100,
-                step=1,
-                value=10,
-            )
-
         st.divider()
         st.header("Links")
 
@@ -150,7 +142,6 @@ def app():
             n_infected=n_infected,
             n_simulations=n_simulations,
             metric=metric,
-            max_n_bins=max_n_bins,
         )
     else:
         raise ValueError(f"Unknown result type: {result_type}")
@@ -162,7 +153,8 @@ def theoretical_chart(
     n_infected: int,
     n_simulations: int,
     metric: str,
-    max_n_bins: int,
+    min_bins: int = 10,
+    max_bins: int = 20,
 ):
     # do the final size pmf ---------------------------------------------------
     # additional no. infected
@@ -171,7 +163,13 @@ def theoretical_chart(
 
     final_data = pl.DataFrame(
         {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
-    ).pipe(_bin_data, "cum_i_max", "n_expected", max_n_bins)
+    ).pipe(
+        _bin_data,
+        "cum_i_max",
+        "n_expected",
+        min_bins=min_bins,
+        max_bins=max_bins,
+    )
 
     # do the state pmf --------------------------------------------------------
 
@@ -191,7 +189,7 @@ def theoretical_chart(
                 ]
             )
             .filter(pl.col("t") > 0)
-            .pipe(_bin_data, "Incident", "prob", max_n_bins, group_cols=["t"])
+            .pipe(_bin_data, "Incident", "prob", max_bins, group_cols=["t"])
         )
 
         state_chart = (
@@ -234,7 +232,8 @@ def theoretical_chart(
                 _bin_data,
                 "Cumulative",
                 "prob",
-                max_n_bins,
+                min_bins=min_bins,
+                max_bins=max_bins,
                 group_cols=["t"],
             )
         )
@@ -369,14 +368,21 @@ def _bin_data(
     df: pl.DataFrame,
     k_col: str,
     value_col: str,
-    max_n_bins: int,
+    min_bins: int,
+    max_bins: int,
     group_cols: list[str] = [],
 ) -> pl.DataFrame:
     k = df[k_col]
     assert min(k) >= 0
 
-    n_bins = max_n_bins if max(k) + 1 > max_n_bins else max(k) + 1
-    bin_cuts = np.linspace(0, max(k) + 1, num=n_bins + 1).round().astype(int)
+    # get the optimal bin size
+    bin_size = _get_bin_size(max(k), min_bins=min_bins, max_bins=max_bins)
+
+    # create bins 0-bin_size, bin_size-2*bin_size, etc.
+    # the second to last bin includes k
+    # we never see the last bin, but we need it up there, so we can see the upper limit
+    bin_cuts = np.arange(0, max(k) + bin_size, step=bin_size).tolist()
+    bin_cuts.append(bin_cuts[-1] + 1)
 
     labels = (
         ["<0"]
@@ -384,7 +390,7 @@ def _bin_data(
             _range_label(bin_cuts[i], bin_cuts[i + 1] - 1)
             for i in range(len(bin_cuts) - 1)
         ]
-        + [f">{max(bin_cuts)}"]
+        + [f">={max(bin_cuts)}"]
     )
 
     return (
@@ -398,6 +404,36 @@ def _bin_data(
         .unnest(k_col)
         .sort(k_col + "_break", descending=True)
     )
+
+
+def _get_bin_size(k: int, min_bins: int, max_bins: int) -> int:
+    """
+    For data 0, 1, ..., k, return the size s of bins such that, for a number b
+    of bins::
+
+    1. min_bins <= b <= max_bins
+    2. s*b >= k
+    3. s*b-k is minimized
+    """
+
+    if k <= max_bins:
+        return 1
+
+    max_error = None
+    best_s = None
+    for n in range(min_bins, max_bins + 1):
+        for s in range(k // n + 1, k + 1):
+            error = n * s - k
+            if error == 0:
+                return s
+            elif max_error is None or error < max_error:
+                max_error = error
+                best_s = s
+
+    if best_s is None:
+        raise RuntimeError("No suitable bin size found")
+
+    return best_s
 
 
 def _range_label(x: int, y: int) -> str:
