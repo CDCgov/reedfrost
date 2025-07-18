@@ -11,7 +11,7 @@ def app():
     st.set_page_config(
         page_title="Chain binomial models", page_icon="🧮", layout="wide"
     )
-    st.title("Chain binomial model")
+    st.title("Chain binomial models")
 
     with st.sidebar:
         st.header("Input parameters")
