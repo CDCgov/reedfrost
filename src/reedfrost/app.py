@@ -124,7 +124,6 @@ def app():
     col3.metric("Initial infected", n_infected)
 
     # results -----------------------------------------------------------------
-    st.subheader("Results")
     if result_type == "Trajectories":
         trajectories_chart(
             sim=sim,
