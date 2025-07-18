@@ -42,6 +42,20 @@ def app():
         )
         assert model is not None
 
+        result_type = st.segmented_control(
+            "Results type",
+            options=["Trajectories", "Theoretical"],
+            default="Trajectories",
+        )
+        assert result_type is not None
+
+        metric = st.segmented_control(
+            "Infections metric",
+            options=["Cumulative", "Incident"],
+            default="Cumulative",
+        )
+        assert metric is not None
+
         with st.expander("Advanced options", expanded=False):
             # need special handling for the case where everyone is immune but 1,
             # because streamlit sliders must have a range
@@ -104,29 +118,12 @@ def app():
     sim = sim_class(s0=n_susceptible, i0=n_infected, params=params)
 
     # display initial conditions ----------------------------------------------
-    st.subheader("Initial conditions")
-    col1, col2, col3 = st.columns([1, 1, 1])
-    col1.text(f"Initial susceptible: {n_susceptible}")
-    col2.text(f"Initial immune: {n_immune}")
-    col3.text(f"Initial infected: {n_infected}")
+    col1, col2, col3, spacer = st.columns([1, 1, 1, 3])
+    col1.metric("Initial susceptible", n_susceptible)
+    col2.metric("Initial immune", n_immune)
+    col3.metric("Initial infected", n_infected)
 
-    # display inputs ---------------------------------------------------------
-    st.subheader("Display inputs")
-    col1, col2 = st.columns([1, 1])
-    metric = col1.segmented_control(
-        "Infections metric",
-        options=["Cumulative", "Incident"],
-        default="Cumulative",
-    )
-    assert metric is not None
-
-    result_type = col2.segmented_control(
-        "Results type",
-        options=["Trajectories", "Theoretical"],
-        default="Trajectories",
-    )
-    assert result_type is not None
-
+    # results -----------------------------------------------------------------
     st.subheader("Results")
     if result_type == "Trajectories":
         trajectories_chart(
