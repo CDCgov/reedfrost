@@ -189,7 +189,14 @@ def theoretical_chart(
                 ]
             )
             .filter(pl.col("t") > 0)
-            .pipe(_bin_data, "Incident", "prob", max_bins, group_cols=["t"])
+            .pipe(
+                _bin_data,
+                "Incident",
+                "prob",
+                max_bins=max_bins,
+                min_bins=min_bins,
+                group_cols=["t"],
+            )
         )
 
         state_chart = (
