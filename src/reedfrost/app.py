@@ -3,6 +3,7 @@ import numpy as np
 import numpy.random
 import polars as pl
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
 import reedfrost
 
@@ -99,23 +100,7 @@ def app():
     n_susceptible = n - n_immune - n_infected
     assert n_susceptible > 0
 
-    match model:
-        case "Reed-Frost":
-            params = {"p": brn / n}
-            sim_class = reedfrost.ReedFrost
-        case "Greenwood":
-            params = {"p": brn / n}
-            sim_class = reedfrost.Greenwood
-        case "Enko":
-            params = {
-                "n": n,
-                "k": np.log(1.0 - brn / n) / np.log(1.0 - 1.0 / (n - 1.0)),
-            }
-            sim_class = reedfrost.Enko
-        case _:
-            raise ValueError(f"Unknown model: {model}")
-
-    sim = sim_class(s0=n_susceptible, i0=n_infected, params=params)
+    sim = _build_sim(model, s0=n_susceptible, i0=n_infected, brn=brn, n=n)
 
     # display initial conditions ----------------------------------------------
     col1, col2, col3, spacer = st.columns([1, 1, 1, 3])
@@ -124,8 +109,11 @@ def app():
     col3.metric("Initial infected", n_infected)
 
     # results -----------------------------------------------------------------
+    results_c = st.empty()
+    results_c.text("Calculating...")
     if result_type == "Trajectories":
         trajectories_chart(
+            c=results_c,
             sim=sim,
             n_simulations=n_simulations,
             metric=metric,
@@ -133,6 +121,7 @@ def app():
         )
     elif result_type == "Theoretical":
         theoretical_chart(
+            c=results_c,
             sim=sim,
             n_susceptible=n_susceptible,
             n_infected=n_infected,
@@ -144,6 +133,7 @@ def app():
 
 
 def theoretical_chart(
+    c: DeltaGenerator,
     sim: reedfrost.ChainBinomial,
     n_susceptible: int,
     n_infected: int,
@@ -218,7 +208,7 @@ def theoretical_chart(
             )
         )
 
-        st.altair_chart(state_chart)
+        c.altair_chart(state_chart)
     elif metric == "Cumulative":
         state_data = (
             pl.from_dicts(
@@ -275,12 +265,13 @@ def theoretical_chart(
                 alt.X("n_expected"),
             )
         )
-        st.altair_chart(state_chart | final_chart)
+        c.altair_chart(state_chart | final_chart)
     else:
         raise ValueError(f"Unknown metric: {metric}")
 
 
 def trajectories_chart(
+    c: DeltaGenerator,
     sim: reedfrost.ChainBinomial,
     n_simulations: int,
     seed: int,
@@ -370,7 +361,34 @@ def trajectories_chart(
 
     chart = line_chart | hist_chart
 
-    st.altair_chart(chart)
+    c.altair_chart(chart)
+
+
+@st.cache_resource
+def _build_sim(
+    model: str,
+    s0: int,
+    i0: int,
+    brn: float,
+    n: int,
+) -> reedfrost.ChainBinomial:
+    match model:
+        case "Reed-Frost":
+            params = {"p": brn / n}
+            sim_class = reedfrost.ReedFrost
+        case "Greenwood":
+            params = {"p": brn / n}
+            sim_class = reedfrost.Greenwood
+        case "Enko":
+            params = {
+                "n": n,
+                "k": np.log(1.0 - brn / n) / np.log(1.0 - 1.0 / (n - 1.0)),
+            }
+            sim_class = reedfrost.Enko
+        case _:
+            raise ValueError(f"Unknown model: {model}")
+
+    return sim_class(s0=s0, i0=i0, params=params)
 
 
 def _bin_data(
