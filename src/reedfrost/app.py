@@ -279,20 +279,20 @@ def trajectories_chart(
     opacity: float = 0.5,
     stroke_width: float = 1.0,
     jitter: float = 0.1,
+    chart_height: float = 500.0,
 ):
-    # initialize the y selection
-    if "y_selected" not in st.session_state:
-        st.session_state["y_selected"] = []
+    assert 0.0 <= jitter <= 0.5
 
-    # respond to the selection, if any
-    if "selection" in st.session_state:
+    if "y_selected" not in st.session_state:
+        # initialize the y selection
+        st.session_state["y_selected"] = []
+    elif "selection" in st.session_state:
+        # respond to the selection, if any
         new_selection = _parse_selection(st.session_state["selection"])
         if new_selection is not None:
-            # toggle the selection
-            if new_selection in st.session_state["y_selected"]:
-                st.session_state["y_selected"].remove(new_selection)
-            else:
-                st.session_state["y_selected"].append(new_selection)
+            st.session_state["y_selected"] = [new_selection]
+        else:
+            st.session_state["y_selected"] = []
 
     # run the simulations ---------------------------------------------------
     rng = numpy.random.default_rng(seed)
@@ -342,9 +342,7 @@ def trajectories_chart(
     traj_data = traj_data.join(peak_traj_data, on=["iter"], how="left", validate="m:1")
 
     # find the maximum y value over all iterations
-    max_y = traj_data.select(pl.col("y").max()).item() + 1
-    y_axis = alt.Axis(tickCount=max_y + 1)
-    y_scale = alt.Scale(domain=[0, max_y])
+    max_y = traj_data.select(pl.col("y").max()).item()
 
     # add jitter and ensure correct order for layering
     traj_data = traj_data.with_columns(
@@ -356,13 +354,16 @@ def trajectories_chart(
 
     line_chart = (
         alt.Chart(traj_data)
-        .properties(title="Simulated outbreaks")
+        .properties(title="Simulated outbreaks", height=chart_height)
         .encode(
             # need +1 because generations are zero-indexed; if last gen is 0, that's
             # one generation
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
-                "y_jitter", title=f"{metric} no. infected", axis=y_axis, scale=y_scale
+                "y_jitter",
+                title=f"{metric} no. infected",
+                # axis=alt.Axis(tickCount=max_y),
+                scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
             alt.Detail("iter"),
             alt.Color(
@@ -370,6 +371,7 @@ def trajectories_chart(
                 scale=alt.Scale(range=my_colors),
                 legend=None,
             ),
+            tooltip=alt.value(None),
         )
         .mark_line(strokeWidth=stroke_width, opacity=opacity)
     )
@@ -387,10 +389,9 @@ def trajectories_chart(
         .sort("peak_y", descending=True)
     )
 
-    point_selection = alt.selection_point("point_selection")
     hist_chart = (
         alt.Chart(hist_data)
-        .properties(title=f"Maximum {metric} distribution")
+        .properties(title=f"Maximum {metric} distribution", height=chart_height)
         .mark_bar()
         .encode(
             alt.X("count", title="No. simulations"),
@@ -398,12 +399,13 @@ def trajectories_chart(
                 "peak_y:N",
                 title=f"{metric} no. infected",
                 sort=hist_data["peak_y"].to_list(),
-                # scale=y_scale,
-                # axis=y_axis,
             ),
             alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
+            tooltip=alt.value(None),
         )
-        .add_params(point_selection)
+        .add_params(
+            alt.selection_point("point_selection", on="pointerover", fields=["peak_y"])
+        )
     )
 
     col1, col2 = c.columns([1, 1])
