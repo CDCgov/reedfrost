@@ -315,7 +315,7 @@ def trajectories_chart(
 
     if metric == "Incident":
         # use just incident infections
-        traj_data = traj_data.with_columns(pl.col("i").alias("i"))
+        traj_data = traj_data.with_columns(pl.col("i").alias("y"))
     elif metric == "Cumulative":
         # convert to cumulative infections
         traj_data = traj_data.sort(["iter", "t"]).with_columns(
