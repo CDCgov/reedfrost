@@ -276,13 +276,11 @@ def trajectories_chart(
     n_simulations: int,
     seed: int,
     metric: str,
-    opacity: float = 0.5,
-    stroke_width: float = 1.0,
-    jitter: float = 0.1,
+    opacity: float = 1.0,
+    stroke_width: float = 0.5,
+    jitter_range: float = 1.0,
     chart_height: float = 500.0,
 ):
-    assert 0.0 <= jitter <= 0.5
-
     if "y_selected" not in st.session_state:
         # initialize the y selection
         st.session_state["y_selected"] = []
@@ -338,17 +336,19 @@ def trajectories_chart(
         )
     )
 
-    # merge the peak data back in
-    traj_data = traj_data.join(peak_traj_data, on=["iter"], how="left", validate="m:1")
+    # add jitter
+    traj_data = traj_data.select(["iter", "t", "y"]).pipe(
+        _jitter_trajectories, jitter_range=jitter_range
+    )
+
+    # merge the peak & selection data back in
+    # put in order for good plotting
+    traj_data = traj_data.join(
+        peak_traj_data, on=["iter"], how="left", validate="m:1"
+    ).sort("is_selected")
 
     # find the maximum y value over all iterations
     max_y = traj_data.select(pl.col("y").max()).item()
-
-    # add jitter and ensure correct order for layering
-    traj_data = traj_data.with_columns(
-        y_jitter=pl.col("y")
-        + pl.Series("jitter", rng.uniform(-jitter, jitter, traj_data.height))
-    ).sort("is_selected")
 
     my_colors = ["#1E4498", "#F78F47"]
 
@@ -362,7 +362,7 @@ def trajectories_chart(
             alt.Y(
                 "y_jitter",
                 title=f"{metric} no. infected",
-                # axis=alt.Axis(tickCount=max_y),
+                axis=alt.Axis(tickCount=max_y),
                 scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
             alt.Detail("iter"),
@@ -542,6 +542,42 @@ def _last_gen_by_prob_change(
         .select(pl.col(t).max())
         .item()
     )
+
+
+def _jitter_trajectories(traj: pl.DataFrame, jitter_range=0.8) -> pl.DataFrame:
+    assert traj.schema.to_python() == {"iter": int, "t": int, "y": int}
+    assert jitter_range >= 0.0
+
+    group_traj = (
+        traj.group_by("t", "y")
+        .agg(pl.col("iter"))
+        .with_columns(n_traj=pl.col("iter").list.len())
+    )
+
+    max_counts = group_traj["n_traj"].max()
+    assert isinstance(max_counts, int)
+
+    space = jitter_range / max_counts
+
+    out = (
+        group_traj.with_columns(
+            jitter=pl.col("n_traj").map_elements(
+                lambda n: _jittered(n, space=space), return_dtype=pl.List(pl.Float64)
+            )
+        )
+        .with_columns(y_jitter=pl.col("y") + pl.col("jitter"))
+        .select("iter", "t", "y", "y_jitter")
+        .explode(["iter", "y_jitter"])
+    )
+
+    assert out.shape[0] == traj.shape[0]
+    return out
+
+
+def _jittered(n: int, space: float) -> np.ndarray:
+    """Deterministic jitter for n points"""
+    half_width = space * (n - 1) / 2
+    return np.linspace(-half_width, half_width, num=n)
 
 
 if __name__ == "__main__":
