@@ -279,7 +279,21 @@ def trajectories_chart(
     opacity: float = 0.5,
     stroke_width: float = 1.0,
     jitter: float = 0.1,
+    chart_height: float = 500.0,
 ):
+    assert 0.0 <= jitter <= 0.5
+
+    if "y_selected" not in st.session_state:
+        # initialize the y selection
+        st.session_state["y_selected"] = []
+    elif "selection" in st.session_state:
+        # respond to the selection, if any
+        new_selection = _parse_selection(st.session_state["selection"])
+        if new_selection is not None:
+            st.session_state["y_selected"] = [new_selection]
+        else:
+            st.session_state["y_selected"] = []
+
     # run the simulations ---------------------------------------------------
     rng = numpy.random.default_rng(seed)
 
@@ -301,7 +315,7 @@ def trajectories_chart(
 
     if metric == "Incident":
         # use just incident infections
-        traj_data = traj_data.with_columns(y=pl.col("i"))
+        traj_data = traj_data.with_columns(pl.col("i").alias("y"))
     elif metric == "Cumulative":
         # convert to cumulative infections
         traj_data = traj_data.sort(["iter", "t"]).with_columns(
@@ -310,58 +324,103 @@ def trajectories_chart(
     else:
         raise ValueError(f"Unknown metric: {metric}")
 
-    # add peak y value by iteration
-    traj_data = traj_data.with_columns(
-        is_peak=(pl.col("y") == pl.col("y").max()).over("iter")
+    # get peak value by iteration
+    # figure out which data are "selected"
+    peak_traj_data = (
+        traj_data.group_by("iter")
+        .agg(pl.col("y").max().alias("peak_y"))
+        .with_columns(
+            is_selected=(
+                pl.col("peak_y").is_in(st.session_state.y_selected)
+                if "y_selected" in st.session_state
+                else pl.lit(False)
+            )
+        )
     )
 
-    # find the maximum y value over all iterations
-    max_y = traj_data.select(pl.col("y").max()).item() + 1
-    y_axis = alt.Axis(tickCount=max_y + 1)
-    y_scale = alt.Scale(domain=[0, max_y])
+    # merge the peak data back in
+    traj_data = traj_data.join(peak_traj_data, on=["iter"], how="left", validate="m:1")
 
-    # add jitter
+    # find the maximum y value over all iterations
+    max_y = traj_data.select(pl.col("y").max()).item()
+
+    # add jitter and ensure correct order for layering
     traj_data = traj_data.with_columns(
         y_jitter=pl.col("y")
         + pl.Series("jitter", rng.uniform(-jitter, jitter, traj_data.height))
-    )
+    ).sort("is_selected")
+
+    my_colors = ["#1E4498", "#F78F47"]
 
     line_chart = (
         alt.Chart(traj_data)
-        .properties(title="Simulated outbreaks")
+        .properties(title="Simulated outbreaks", height=chart_height)
         .encode(
             # need +1 because generations are zero-indexed; if last gen is 0, that's
             # one generation
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
-                "y_jitter", title=f"{metric} no. infected", axis=y_axis, scale=y_scale
+                "y_jitter",
+                title=f"{metric} no. infected",
+                # axis=alt.Axis(tickCount=max_y),
+                scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
             alt.Detail("iter"),
+            alt.Color(
+                "is_selected",
+                scale=alt.Scale(range=my_colors),
+                legend=None,
+            ),
+            tooltip=alt.value(None),
         )
-        .mark_line(opacity=opacity, strokeWidth=stroke_width)
+        .mark_line(strokeWidth=stroke_width, opacity=opacity)
+    )
+
+    hist_data = (
+        peak_traj_data.group_by("peak_y")
+        .agg(pl.col("iter").count().alias("count"))
+        .join(
+            pl.DataFrame({"peak_y": range(max_y + 1), "count": 0}),
+            on=["peak_y", "count"],
+            how="full",
+            coalesce=True,
+        )
+        .with_columns(is_selected=pl.col("peak_y").is_in(st.session_state.y_selected))
+        .sort("peak_y", descending=True)
     )
 
     hist_chart = (
-        alt.Chart(traj_data)
-        .transform_calculate(y2=alt.datum.y - 0.5)
-        .transform_filter(alt.datum.is_peak)
-        .properties(title=f"Maximum {metric} distribution")
+        alt.Chart(hist_data)
+        .properties(title=f"Maximum {metric} distribution", height=chart_height)
         .mark_bar()
         .encode(
-            alt.X("count()", title="No. simulations"),
+            alt.X("count", title="No. simulations"),
             alt.Y(
-                "y2:Q",
-                bin=alt.Bin(step=1.0),
+                "peak_y:N",
                 title=f"{metric} no. infected",
-                scale=y_scale,
-                axis=y_axis,
+                sort=hist_data["peak_y"].to_list(),
             ),
+            alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
+            tooltip=alt.value(None),
+        )
+        .add_params(
+            alt.selection_point("point_selection", on="pointerover", fields=["peak_y"])
         )
     )
 
-    chart = line_chart | hist_chart
+    col1, col2 = c.columns([1, 1])
+    col1.altair_chart(line_chart)
+    col2.altair_chart(hist_chart, on_select="rerun", key="selection")
 
-    c.altair_chart(chart)
+
+def _parse_selection(x, name="point_selection", value="peak_y") -> int | None:
+    assert "selection" in x
+    assert name in x["selection"]
+    match len(x["selection"][name]):
+        case 0:
+            return None
+        case 1:
+            return x["selection"][name][0][value]
 
 
 @st.cache_resource
