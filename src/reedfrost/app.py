@@ -239,7 +239,7 @@ def model_theoretical_incident(params: dict) -> dict:
     return {"state": state_data}
 
 
-def view(params: dict, results=None) -> None:
+def view(params: dict, results: dict) -> None:
     # display initial conditions ----------------------------------------------
     col1, col2, col3, _ = st.columns([1, 1, 1, 3])
     col1.metric("Initial susceptible", params["n_susceptible"])
