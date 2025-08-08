@@ -77,7 +77,7 @@ def app():
                 min_value=5,
                 max_value=250,
                 step=1,
-                value=50,
+                value=100,
             )
 
             seed = st.number_input(
