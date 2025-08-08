@@ -15,78 +15,7 @@ def app():
     st.title("Chain binomial models")
 
     with st.sidebar:
-        st.header("Input parameters")
-        n = st.slider("Population size", min_value=1, max_value=100, step=1, value=10)
-
-        # user input is in proportions, but we get the integer number
-        n_immune = st.select_slider(
-            "Proportion initially immune",
-            # values are from 0 to N-1, leaving space for at least 1 infected
-            options=range(0, n),
-            value=0,
-            format_func=lambda x: f"{x / n:.0%}",
-        )
-
-        brn = st.slider(
-            "Basic reproduction number",
-            min_value=0.0,
-            max_value=min(15.0, float(n)),
-            step=0.1,
-            format="%.1f",
-            value=min(1.5, float(n)),
-        )
-
-        model = st.segmented_control(
-            "Model",
-            options=["Reed-Frost", "Enko", "Greenwood"],
-            default="Reed-Frost",
-        )
-        assert model is not None
-
-        result_type = st.segmented_control(
-            "Results type",
-            options=["Trajectories", "Theoretical"],
-            default="Trajectories",
-        )
-        assert result_type is not None
-
-        metric = st.segmented_control(
-            "Infections metric",
-            options=["Cumulative", "Incident"],
-            default="Cumulative",
-        )
-        assert metric is not None
-
-        with st.expander("Advanced options", expanded=False):
-            # need special handling for the case where everyone is immune but 1,
-            # because streamlit sliders must have a range
-            if n - n_immune == 1:
-                n_infected = 1
-                st.text("No. initially infected: 1")
-            else:
-                n_infected = st.slider(
-                    "No. initially infected",
-                    min_value=1,
-                    max_value=n - n_immune,
-                    step=1,
-                    value=1,
-                )
-
-            n_simulations = st.slider(
-                "No. simulations",
-                min_value=5,
-                max_value=250,
-                step=1,
-                value=100,
-            )
-
-            seed = st.number_input(
-                "Random seed",
-                min_value=0,
-                max_value=2**32 - 1,
-                step=1,
-                value=42,
-            )
+        params = get_params()
 
         st.divider()
         st.header("Links")
@@ -96,88 +25,255 @@ def app():
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
+    results = get_results(params)
+    view(params, results)
+
+
+def get_params() -> dict:
+    st.header("Input parameters")
+    n = st.slider("Population size", min_value=1, max_value=100, step=1, value=10)
+
+    # user input is in proportions, but we get the integer number
+    n_immune = st.select_slider(
+        "Proportion initially immune",
+        # values are from 0 to N-1, leaving space for at least 1 infected
+        options=range(0, n),
+        value=0,
+        format_func=lambda x: f"{x / n:.0%}",
+    )
+
+    brn = st.slider(
+        "Basic reproduction number",
+        min_value=0.0,
+        max_value=min(15.0, float(n)),
+        step=0.1,
+        format="%.1f",
+        value=min(1.5, float(n)),
+    )
+
+    model = st.segmented_control(
+        "Model",
+        options=["Reed-Frost", "Enko", "Greenwood"],
+        default="Reed-Frost",
+    )
+    assert model is not None
+
+    result_type = st.segmented_control(
+        "Results type",
+        options=["Trajectories", "Theoretical"],
+        default="Trajectories",
+    )
+    assert result_type is not None
+
+    metric = st.segmented_control(
+        "Infections metric",
+        options=["Cumulative", "Incident"],
+        default="Cumulative",
+    )
+    assert metric is not None
+
+    with st.expander("Advanced options", expanded=False):
+        # need special handling for the case where everyone is immune but 1,
+        # because streamlit sliders must have a range
+        if n - n_immune == 1:
+            n_infected = 1
+            st.text("No. initially infected: 1")
+        else:
+            n_infected = st.slider(
+                "No. initially infected",
+                min_value=1,
+                max_value=n - n_immune,
+                step=1,
+                value=1,
+            )
+
+        n_simulations = st.slider(
+            "No. simulations",
+            min_value=5,
+            max_value=250,
+            step=1,
+            value=100,
+        )
+
+        seed = st.number_input(
+            "Random seed",
+            min_value=0,
+            max_value=2**32 - 1,
+            step=1,
+            value=42,
+        )
+
     # derived parameters ------------------------------------------------------
     n_susceptible = n - n_immune - n_infected
     assert n_susceptible > 0
 
-    sim = _build_sim(model, s0=n_susceptible, i0=n_infected, brn=brn, n=n)
+    return {
+        "model": model,
+        "n_susceptible": n_susceptible,
+        "n_infected": n_infected,
+        "n_immune": n_immune,
+        "brn": brn,
+        "n": n,
+        "n_simulations": n_simulations,
+        "seed": seed,
+        "result_type": result_type,
+        "metric": metric,
+    }
 
+
+def get_results(params) -> dict:
+    match (params["result_type"], params["metric"]):
+        case ("Trajectories", _):
+            return model_trajectories(params)
+        case ("Theoretical", "Incident"):
+            return model_theoretical_incident(params)
+        case ("Theoretical", "Cumulative"):
+            return model_theoretical_cumulative(params)
+        case _:
+            raise ValueError(
+                f"Unknown results/metric: {params['result_type']}/{params['metric']}"
+            )
+
+
+def model_trajectories(params: dict) -> dict:
+    sim = _build_sim(**params)
+    rng = numpy.random.default_rng(params["seed"])
+
+    # get one numpy array, representing a timeseries of infections
+    # per generation, for each simulation
+    simulations = [
+        sim.simulate(rng=child) for child in rng.spawn(params["n_simulations"])
+    ]
+
+    # combine those simulations into a dataframe, making trajectories
+    traj_data = pl.concat(
+        [
+            pl.DataFrame({"iter": k, "t": range(len(x)), "i": x})
+            for k, x in enumerate(simulations)
+        ]
+    )
+
+    # remove entries where no infections occurred
+    last_gen = traj_data.filter(pl.col("i") > 0).select(pl.col("t").max()).item()
+    traj_data = traj_data.filter(pl.col("t") <= last_gen)
+
+    match params["metric"]:
+        case "Incident":
+            # use just incident infections
+            traj_data = traj_data.with_columns(pl.col("i").alias("y"))
+        case "Cumulative":
+            # convert to cumulative infections
+            traj_data = traj_data.sort(["iter", "t"]).with_columns(
+                pl.col("i").cum_sum().over("iter").alias("y")
+            )
+        case _:
+            raise ValueError(f"Unknown metric: {params['metric']}")
+
+    # get peak value by iteration
+    peak_traj_data = traj_data.group_by("iter").agg(pl.col("y").max().alias("peak_y"))
+
+    return {"traj": traj_data, "peak_traj": peak_traj_data}
+
+
+def model_theoretical_cumulative(params: dict) -> dict:
+    assert params["result_type"] == "Theoretical"
+    assert params["metric"] == "Cumulative"
+
+    sim = _build_sim(**params)
+
+    # do the final size pmf ---------------------------------------------------
+    # additional no. infected
+    k = np.array(range(params["n_susceptible"] + 1))
+    dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
+
+    final_data = pl.DataFrame(
+        {
+            "cum_i_max": k + params["n_infected"],
+            "n_expected": dens * params["n_simulations"],
+        }
+    )
+
+    state_data = pl.from_dicts(
+        [
+            {
+                "Cumulative": params["n_infected"] + (params["n_susceptible"] - s),
+                "t": t,
+                "prob": sum(
+                    [
+                        sim.prob_state(s, i, t)
+                        for i in range(params["n_susceptible"] + 1)
+                    ]
+                ),
+            }
+            for s in range(params["n_susceptible"] + 1)
+            for t in range(params["n_susceptible"] + 1)
+        ]
+    ).filter(pl.col("t") > 0)
+
+    return {"final": final_data, "state": state_data}
+
+
+def model_theoretical_incident(params: dict) -> dict:
+    assert params["result_type"] == "Theoretical"
+    assert params["metric"] == "Incident"
+
+    sim = _build_sim(**params)
+
+    state_data = pl.from_dicts(
+        [
+            {
+                "Incident": i,
+                "t": t,
+                "prob": sum(
+                    [
+                        sim.prob_state(s, i, t)
+                        for s in range(params["n_susceptible"] + 1)
+                    ]
+                ),
+            }
+            for i in range(params["n_susceptible"] + 1)
+            for t in range(params["n_susceptible"] + 1)
+        ]
+    ).filter(pl.col("t") > 0)
+
+    return {"state": state_data}
+
+
+def view(params: dict, results: dict) -> None:
     # display initial conditions ----------------------------------------------
-    col1, col2, col3, spacer = st.columns([1, 1, 1, 3])
-    col1.metric("Initial susceptible", n_susceptible)
-    col2.metric("Initial immune", n_immune)
-    col3.metric("Initial infected", n_infected)
+    col1, col2, col3, _ = st.columns([1, 1, 1, 3])
+    col1.metric("Initial susceptible", params["n_susceptible"])
+    col2.metric("Initial immune", params["n_immune"])
+    col3.metric("Initial infected", params["n_infected"])
 
     # results -----------------------------------------------------------------
-    results_c = st.empty()
-    results_c.text("Calculating...")
-    if result_type == "Trajectories":
-        trajectories_chart(
-            c=results_c,
-            sim=sim,
-            n_simulations=n_simulations,
-            metric=metric,
-            seed=seed,
-        )
-    elif result_type == "Theoretical":
-        theoretical_chart(
-            c=results_c,
-            sim=sim,
-            n_susceptible=n_susceptible,
-            n_infected=n_infected,
-            n_simulations=n_simulations,
-            metric=metric,
-        )
+    view_c = st.empty()
+    view_c.text("Calculating...")
+
+    if results is None:
+        pass
     else:
-        raise ValueError(f"Unknown result type: {result_type}")
+        match params["result_type"]:
+            case "Trajectories":
+                trajectories_chart(c=view_c, results=results, params=params)
+            case "Theoretical":
+                theoretical_chart(c=view_c, results=results, params=params)
+            case _:
+                raise ValueError(f"Unknown result type: {params['result_type']}")
 
 
 def theoretical_chart(
     c: DeltaGenerator,
-    sim: reedfrost.ChainBinomial,
-    n_susceptible: int,
-    n_infected: int,
-    n_simulations: int,
-    metric: str,
+    results: dict,
+    params: dict,
     min_bins: int = 10,
     max_bins: int = 20,
     prob_diff_eps: float = 0.005,
     prob_bins: int = 10,
 ):
-    # do the final size pmf ---------------------------------------------------
-    # additional no. infected
-    k = np.array(range(n_susceptible + 1))
-    dens = np.array([sim.prob_final_i_cum_extra(kk) for kk in k])
-
-    final_data = pl.DataFrame(
-        {"cum_i_max": k + n_infected, "n_expected": dens * n_simulations}
-    ).pipe(
-        _bin_data,
-        "cum_i_max",
-        "n_expected",
-        min_bins=min_bins,
-        max_bins=max_bins,
-    )
-
-    # do the state pmf --------------------------------------------------------
-
-    if metric == "Incident":
-        state_data = (
-            pl.from_dicts(
-                [
-                    {
-                        "Incident": i,
-                        "t": t,
-                        "prob": sum(
-                            [sim.prob_state(s, i, t) for s in range(n_susceptible + 1)]
-                        ),
-                    }
-                    for i in range(n_susceptible + 1)
-                    for t in range(n_susceptible + 1)
-                ]
-            )
-            .filter(pl.col("t") > 0)
-            .pipe(
+    match params["metric"]:
+        case "Incident":
+            state_data = results["state"].pipe(
                 _bin_data,
                 "Incident",
                 "prob",
@@ -185,47 +281,38 @@ def theoretical_chart(
                 min_bins=min_bins,
                 group_cols=["t"],
             )
-        )
+            last_gen = _last_gen_by_prob_change(state_data, "Incident", prob_diff_eps)
 
-        last_gen = _last_gen_by_prob_change(state_data, "Incident", prob_diff_eps)
-
-        state_chart = (
-            alt.Chart(state_data.filter(pl.col("t") <= last_gen))
-            .properties(title="Probability of no. of infections by generation")
-            .mark_rect()
-            .encode(
-                alt.X("t:O", title="Generation"),
-                alt.Y(
-                    "Incident:O",
-                    sort=state_data["Incident"].to_list(),
-                    title=f"{metric} no. infected",
-                ),
-                color=alt.condition(
-                    alt.datum.prob == 0,
-                    alt.value("black"),
-                    alt.Color("prob", title="Probability").bin(maxbins=prob_bins),
-                ),
+            state_chart = (
+                alt.Chart(state_data.filter(pl.col("t") <= last_gen))
+                .properties(title="Probability of no. of infections by generation")
+                .mark_rect()
+                .encode(
+                    alt.X("t:O", title="Generation"),
+                    alt.Y(
+                        "Incident:O",
+                        sort=state_data["Incident"].to_list(),
+                        title=f"{params['metric']} no. infected",
+                    ),
+                    color=alt.condition(
+                        alt.datum.prob == 0,
+                        alt.value("black"),
+                        alt.Color("prob", title="Probability").bin(maxbins=prob_bins),
+                    ),
+                )
             )
-        )
 
-        c.altair_chart(state_chart)
-    elif metric == "Cumulative":
-        state_data = (
-            pl.from_dicts(
-                [
-                    {
-                        "Cumulative": n_infected + (n_susceptible - s),
-                        "t": t,
-                        "prob": sum(
-                            [sim.prob_state(s, i, t) for i in range(n_susceptible + 1)]
-                        ),
-                    }
-                    for s in range(n_susceptible + 1)
-                    for t in range(n_susceptible + 1)
-                ]
+            c.altair_chart(state_chart)
+        case "Cumulative":
+            final_data = results["final"].pipe(
+                _bin_data,
+                "cum_i_max",
+                "n_expected",
+                min_bins=min_bins,
+                max_bins=max_bins,
             )
-            .filter(pl.col("t") > 0)
-            .pipe(
+
+            state_data = results["state"].pipe(
                 _bin_data,
                 "Cumulative",
                 "prob",
@@ -233,49 +320,46 @@ def theoretical_chart(
                 max_bins=max_bins,
                 group_cols=["t"],
             )
-        )
 
-        last_gen = _last_gen_by_prob_change(state_data, "Cumulative", prob_diff_eps)
+            last_gen = _last_gen_by_prob_change(state_data, "Cumulative", prob_diff_eps)
 
-        state_chart = (
-            alt.Chart(state_data.filter(pl.col("t") <= last_gen))
-            .properties(title="Probability of no. of infections by generation")
-            .mark_rect()
-            .encode(
-                alt.X("t:O", title="Generation"),
-                alt.Y(
-                    "Cumulative:O",
-                    sort=state_data["Cumulative"].to_list(),
-                    title="Cumulative no. infected",
-                ),
-                alt.Color("prob", title="Probability").bin(maxbins=prob_bins),
+            state_chart = (
+                alt.Chart(state_data.filter(pl.col("t") <= last_gen))
+                .properties(title="Probability of no. of infections by generation")
+                .mark_rect()
+                .encode(
+                    alt.X("t:O", title="Generation"),
+                    alt.Y(
+                        "Cumulative:O",
+                        sort=state_data["Cumulative"].to_list(),
+                        title="Cumulative no. infected",
+                    ),
+                    alt.Color("prob", title="Probability").bin(maxbins=prob_bins),
+                )
             )
-        )
 
-        final_chart = (
-            alt.Chart(final_data)
-            .properties(title="Total no. of infections")
-            .mark_bar()
-            .encode(
-                alt.Y(
-                    "cum_i_max:O",
-                    sort=final_data["cum_i_max"].to_list(),
-                    title="Cumulative no. infected",
-                ),
-                alt.X("n_expected"),
+            final_chart = (
+                alt.Chart(final_data)
+                .properties(title="Total no. of infections")
+                .mark_bar()
+                .encode(
+                    alt.Y(
+                        "cum_i_max:O",
+                        sort=final_data["cum_i_max"].to_list(),
+                        title="Cumulative no. infected",
+                    ),
+                    alt.X("n_expected"),
+                )
             )
-        )
-        c.altair_chart(state_chart | final_chart)
-    else:
-        raise ValueError(f"Unknown metric: {metric}")
+            c.altair_chart(state_chart | final_chart)
+        case _:
+            raise ValueError(f"Unknown metric: {params['metric']}")
 
 
 def trajectories_chart(
     c: DeltaGenerator,
-    sim: reedfrost.ChainBinomial,
-    n_simulations: int,
-    seed: int,
-    metric: str,
+    params: dict,
+    results: dict,
     opacity: float = 1.0,
     stroke_width: float = 0.5,
     jitter_range: float = 0.8,
@@ -292,41 +376,17 @@ def trajectories_chart(
         else:
             st.session_state["y_selected"] = []
 
-    # run the simulations ---------------------------------------------------
-    rng = numpy.random.default_rng(seed)
+    assert isinstance(results["traj"], pl.DataFrame)
+    assert isinstance(results["peak_traj"], pl.DataFrame)
 
-    # get one numpy array, representing a timeseries of infections
-    # per generation, for each simulation
-    simulations = [sim.simulate(rng=child) for child in rng.spawn(n_simulations)]
-
-    # combine those simulations into a dataframe, making trajectories
-    traj_data = pl.concat(
-        [
-            pl.DataFrame({"iter": k, "t": range(len(x)), "i": x})
-            for k, x in enumerate(simulations)
-        ]
-    )
-
-    # remove entries where no infections occurred
-    last_gen = traj_data.filter(pl.col("i") > 0).select(pl.col("t").max()).item()
-    traj_data = traj_data.filter(pl.col("t") <= last_gen)
-
-    if metric == "Incident":
-        # use just incident infections
-        traj_data = traj_data.with_columns(pl.col("i").alias("y"))
-    elif metric == "Cumulative":
-        # convert to cumulative infections
-        traj_data = traj_data.sort(["iter", "t"]).with_columns(
-            pl.col("i").cum_sum().over("iter").alias("y")
-        )
-    else:
-        raise ValueError(f"Unknown metric: {metric}")
-
-    # get peak value by iteration
-    # figure out which data are "selected"
-    peak_traj_data = (
-        traj_data.group_by("iter")
-        .agg(pl.col("y").max().alias("peak_y"))
+    data = (
+        results["traj"]
+        # add jitter
+        .select(["iter", "t", "y"])
+        .pipe(_jitter_trajectories, jitter_range=jitter_range)
+        # merge the peak & selection data back in
+        .join(results["peak_traj"], on=["iter"], how="left", validate="m:1")
+        # put in order for good plotting
         .with_columns(
             is_selected=(
                 pl.col("peak_y").is_in(st.session_state.y_selected)
@@ -334,26 +394,17 @@ def trajectories_chart(
                 else pl.lit(False)
             )
         )
+        .sort("is_selected")
     )
-
-    # add jitter
-    traj_data = traj_data.select(["iter", "t", "y"]).pipe(
-        _jitter_trajectories, jitter_range=jitter_range
-    )
-
-    # merge the peak & selection data back in
-    # put in order for good plotting
-    traj_data = traj_data.join(
-        peak_traj_data, on=["iter"], how="left", validate="m:1"
-    ).sort("is_selected")
 
     # find the maximum y value over all iterations
-    max_y = traj_data.select(pl.col("y").max()).item()
+    max_y = data.select(pl.col("y").max()).item()
+    last_gen = data.select(pl.col("t").max()).item()
 
     my_colors = ["#1E4498", "#F78F47"]
 
     line_chart = (
-        alt.Chart(traj_data)
+        alt.Chart(data)
         .properties(title="Simulated outbreaks", height=chart_height)
         .encode(
             # need +1 because generations are zero-indexed; if last gen is 0, that's
@@ -361,7 +412,7 @@ def trajectories_chart(
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
                 "y_jitter",
-                title=f"{metric} no. infected",
+                title=f"{params['metric']} no. infected",
                 axis=alt.Axis(tickCount=max_y),
                 scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
@@ -377,7 +428,8 @@ def trajectories_chart(
     )
 
     hist_data = (
-        peak_traj_data.group_by("peak_y")
+        results["peak_traj"]
+        .group_by("peak_y")
         .agg(pl.col("iter").count().alias("count"))
         .join(
             pl.DataFrame({"peak_y": range(max_y + 1), "count": 0}),
@@ -391,13 +443,15 @@ def trajectories_chart(
 
     hist_chart = (
         alt.Chart(hist_data)
-        .properties(title=f"Maximum {metric} distribution", height=chart_height)
+        .properties(
+            title=f"Maximum {params['metric']} distribution", height=chart_height
+        )
         .mark_bar()
         .encode(
             alt.X("count", title="No. simulations"),
             alt.Y(
                 "peak_y:N",
-                title=f"{metric} no. infected",
+                title=f"{params['metric']} no. infected",
                 sort=hist_data["peak_y"].to_list(),
             ),
             alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
@@ -426,10 +480,11 @@ def _parse_selection(x, name="point_selection", value="peak_y") -> int | None:
 @st.cache_resource
 def _build_sim(
     model: str,
-    s0: int,
-    i0: int,
+    n_susceptible: int,
+    n_infected: int,
     brn: float,
     n: int,
+    **kwargs,
 ) -> reedfrost.ChainBinomial:
     match model:
         case "Reed-Frost":
@@ -447,7 +502,7 @@ def _build_sim(
         case _:
             raise ValueError(f"Unknown model: {model}")
 
-    return sim_class(s0=s0, i0=i0, params=params)
+    return sim_class(s0=n_susceptible, i0=n_infected, params=params)
 
 
 def _bin_data(
