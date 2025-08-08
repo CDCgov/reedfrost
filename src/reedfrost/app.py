@@ -77,7 +77,7 @@ def app():
                 min_value=5,
                 max_value=250,
                 step=1,
-                value=50,
+                value=100,
             )
 
             seed = st.number_input(
@@ -278,7 +278,7 @@ def trajectories_chart(
     metric: str,
     opacity: float = 1.0,
     stroke_width: float = 0.5,
-    jitter_range: float = 1.0,
+    jitter_range: float = 0.8,
     chart_height: float = 500.0,
 ):
     if "y_selected" not in st.session_state:
@@ -554,7 +554,9 @@ def _jitter_trajectories(traj: pl.DataFrame, jitter_range=0.8) -> pl.DataFrame:
         .with_columns(n_traj=pl.col("iter").list.len())
     )
 
-    max_counts = group_traj["n_traj"].max()
+    max_counts = (
+        group_traj.filter(pl.col("t") > 0).select(pl.col("n_traj").max()).item()
+    )
     assert isinstance(max_counts, int)
 
     space = jitter_range / max_counts
@@ -565,7 +567,10 @@ def _jitter_trajectories(traj: pl.DataFrame, jitter_range=0.8) -> pl.DataFrame:
                 lambda n: _jittered(n, space=space), return_dtype=pl.List(pl.Float64)
             )
         )
-        .with_columns(y_jitter=pl.col("y") + pl.col("jitter"))
+        .with_columns(
+            y_jitter=pl.col("y")
+            + pl.col("jitter") * (pl.when(pl.col("t") > 0).then(1).otherwise(0))
+        )
         .select("iter", "t", "y", "y_jitter")
         .explode(["iter", "y_jitter"])
     )
