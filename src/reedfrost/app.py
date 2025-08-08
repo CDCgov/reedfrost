@@ -278,7 +278,7 @@ def trajectories_chart(
     metric: str,
     opacity: float = 1.0,
     stroke_width: float = 0.5,
-    jitter_range: float = 1.0,
+    jitter_range: float = 0.8,
     chart_height: float = 500.0,
 ):
     if "y_selected" not in st.session_state:
