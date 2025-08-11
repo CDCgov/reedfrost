@@ -1,7 +1,7 @@
 import importlib.resources
 import json
 from types import ModuleType
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 import altair as alt
 import numpy as np
@@ -12,79 +12,92 @@ from streamlit.delta_generator import DeltaGenerator
 
 import reedfrost
 
+type Inputs = dict[str, Any]
+
+
+class Component:
+    def __init__(self, exec: Callable):
+        """
+        Define a general component that can be called in Streamlit
+        """
+        self.exec = exec
+
+    def __call__(self, inputs: Inputs) -> Any:
+        return self.exec(inputs)
+
+
+class StreamlitComponent(Component):
+    def __init__(self, method_name: str, kwargs_template: dict):
+        """
+        Define a Streamlit component, without actually executing it
+        """
+        assert method_name in dir(st)
+
+        self.method_name = method_name
+        self.kwargs_template = kwargs_template
+
+    def __call__(self, inputs: Inputs, c: DeltaGenerator | ModuleType = st):
+        kwargs = {
+            k: v(inputs) if callable(v) else v for k, v in self.kwargs_template.items()
+        }
+        return getattr(c, self.method_name)(**kwargs)
+
 
 class Inputter:
     def __init__(self):
         """
         Track streamlit input components and the values they return
         """
+        self.components = {}
         self.inputs = {}
 
-    def add_component(
-        self,
-        key: str,
-        method_name: str,
-        kwargs: dict,
-        kwargs_type: Literal["fixed", "callable"] = "callable",
-        c: DeltaGenerator | ModuleType | None = None,
-    ):
+    def register_component(self, key: str, component: Component):
+        assert key not in self.components
+        self.components[key] = component
+
+    def place_component(self, key: str, c: DeltaGenerator | ModuleType = st):
         """
-        Add a streamlit input component. The resulting value is stored in
-        self.inputs
-
-        In the simplest case, the function arguments to the component method are fixed
-        (e.g., a slider that goes from 0 to 100). In other cases, a component depends on
-        inputs collected before it (e.g., a slider that goes from 0 to N, where N was
-        set by a previous slider).
-
-        If `kwargs_type` is `"callable"`, and a value in `kwargs` is callable, then that
-        value will be replaced by the result of calling that callable on the dictionary
-        of inputs collected so far. If `"fixed"`, then the values are not updated.
-        If you want a kwarg to be a function (e.g., a label formatter), then either use
-        `"fixed"` or allow for a dummy call like `lambda _: lambda x: my_formatting(x)`.
-
         Args:
-            key: The key under which the value will be stored in self.inputs
-            method_name: The name of the streamlit method to call (e.g., "slider")
-            kwargs: The keyword arguments to pass to the method (e.g., "label", "min_value")
-            kwargs_type: how to update the kwargs before calling the method
-            c: The streamlit component or module to use; if None, use st
+            key: Component ID
+            c: If a DeltaGenerator, the component will be placed in that container.
+                Default is `st`, which will place in the app relative to where it
+                is called in the script.
         """
-        if c is None:
-            c = st
+        component = self.components[key]
+        if isinstance(component, StreamlitComponent):
+            self.inputs[key] = component(self.inputs, c=c)
+        elif isinstance(component, Component):
+            self.inputs[key] = component(self.inputs)
+        else:
+            raise RuntimeError()
 
-        assert method_name in dir(c)
-        assert key not in self.inputs
-
-        match kwargs_type:
-            case "fixed":
-                pass
-            case "callable":
-                kwargs = {
-                    k: v(self.inputs) if callable(v) else v for k, v in kwargs.items()
-                }
-            case _:
-                raise RuntimeError(f"Unknown kwargs_type: {kwargs_type}")
-
-        self.inputs[key] = getattr(c, method_name)(**kwargs)
-
-    def add_custom_component(self, key: str, method: Callable[[dict[str, Any]], Any]):
-        assert key not in self.inputs
-        self.inputs[key] = method(self.inputs)
-
-    def add_value(self, key: str, value):
+    def inset_input_value(self, key: str, value):
         assert key not in self.inputs
         self.inputs[key] = value
 
 
 def app():
+    inputter = register_inputs()
+
+    # set up app input layout and collect input values ------------------------
     st.set_page_config(
         page_title="Chain binomial models", page_icon="🧮", layout="wide"
     )
     st.title("Chain binomial models")
 
     with st.sidebar:
-        params = get_params()
+        inputter.place_component("n")
+        inputter.place_component("n_immune")
+        inputter.place_component("brn")
+        inputter.place_component("model")
+        inputter.place_component("result_type")
+        inputter.place_component("metric")
+
+        st.header("Input parameters")
+        with st.expander("Advanced options", expanded=False):
+            inputter.place_component("n_infected")
+            inputter.place_component("n_simulations")
+            inputter.place_component("seed")
 
         st.divider()
         st.header("Links")
@@ -94,122 +107,139 @@ def app():
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
-    results = get_results(params)
-    view(params, results)
+    # run the simulations/computations ----------------------------------------
+    results = get_results(inputter.inputs)
+
+    # render the results ------------------------------------------------------
+    view(inputter.inputs, results)
 
 
-def get_params() -> dict:
-    st.header("Input parameters")
+def register_inputs() -> Inputter:
     inputter = Inputter()
-    inputter.add_component(
+    inputter.register_component(
         "n",
-        "slider",
-        kwargs={
-            "label": "Population size",
-            "min_value": 1,
-            "max_value": 100,
-            "step": 1,
-            "value": 10,
-        },
+        StreamlitComponent(
+            "slider",
+            {
+                "label": "Population size",
+                "min_value": 1,
+                "max_value": 100,
+                "step": 1,
+                "value": 10,
+            },
+        ),
     )
 
     # user input is in proportions, but we get the integer number
-    inputter.add_component(
+    inputter.register_component(
         "n_immune",
-        "select_slider",
-        kwargs={
-            "label": "Proportion initially immune",
-            # values are from 0 to N-1, leaving space for at least 1 infected
-            "options": lambda p: range(0, p["n"]),
-            "value": 0,
-            "format_func": lambda p: lambda x: f"{x / p['n']:.0%}",
-        },
+        StreamlitComponent(
+            "select_slider",
+            {
+                "label": "Proportion initially immune",
+                # values are from 0 to N-1, leaving space for at least 1 infected
+                "options": lambda p: range(0, p["n"]),
+                "value": 0,
+                "format_func": lambda p: lambda x: f"{x / p['n']:.0%}",
+            },
+        ),
     )
 
-    inputter.add_component(
+    inputter.register_component(
         "brn",
-        "slider",
-        kwargs={
-            "label": "Basic reproduction number",
-            "min_value": 0.0,
-            "max_value": lambda p: min(15.0, float(p["n"])),
-            "step": 0.1,
-            "format": "%.1f",
-            "value": lambda p: min(1.5, float(p["n"])),
-        },
-    )
-
-    inputter.add_component(
-        "model",
-        "segmented_control",
-        kwargs={
-            "label": "Model",
-            "options": ["Reed-Frost", "Enko", "Greenwood"],
-            "default": "Reed-Frost",
-        },
-    )
-
-    inputter.add_component(
-        "result_type",
-        "segmented_control",
-        kwargs={
-            "label": "Results type",
-            "options": ["Trajectories", "Theoretical"],
-            "default": "Trajectories",
-        },
-    )
-
-    inputter.add_component(
-        "metric",
-        "segmented_control",
-        kwargs={
-            "label": "Infections metric",
-            "options": ["Cumulative", "Incident"],
-            "default": "Cumulative",
-        },
-    )
-
-    with st.expander("Advanced options", expanded=False):
-        # need special handling for the case where everyone is immune but 1,
-        # because streamlit sliders must have a range
-        inputter.add_custom_component("n_infected", n_infected_component)
-
-        inputter.add_component(
-            "n_simulations",
+        StreamlitComponent(
             "slider",
-            kwargs={
+            {
+                "label": "Basic reproduction number",
+                "min_value": 0.0,
+                "max_value": lambda p: min(15.0, float(p["n"])),
+                "step": 0.1,
+                "format": "%.1f",
+                "value": lambda p: min(1.5, float(p["n"])),
+            },
+        ),
+    )
+
+    inputter.register_component(
+        "model",
+        StreamlitComponent(
+            "segmented_control",
+            {
+                "label": "Model",
+                "options": ["Reed-Frost", "Enko", "Greenwood"],
+                "default": "Reed-Frost",
+            },
+        ),
+    )
+
+    inputter.register_component(
+        "result_type",
+        StreamlitComponent(
+            "segmented_control",
+            {
+                "label": "Results type",
+                "options": ["Trajectories", "Theoretical"],
+                "default": "Trajectories",
+            },
+        ),
+    )
+
+    inputter.register_component(
+        "metric",
+        StreamlitComponent(
+            "segmented_control",
+            {
+                "label": "Infections metric",
+                "options": ["Cumulative", "Incident"],
+                "default": "Cumulative",
+            },
+        ),
+    )
+
+    inputter.register_component("n_infected", Component(_exec_n_infected))
+
+    inputter.register_component(
+        "n_simulations",
+        StreamlitComponent(
+            "slider",
+            {
                 "label": "No. simulations",
                 "min_value": 5,
                 "max_value": 250,
                 "step": 1,
                 "value": 100,
             },
-        )
+        ),
+    )
 
-        inputter.add_component(
-            "seed",
+    inputter.register_component(
+        "seed",
+        StreamlitComponent(
             "number_input",
-            kwargs={
+            {
                 "label": "Random seed",
                 "min_value": 0,
                 "max_value": 2**32 - 1,
                 "step": 1,
                 "value": 42,
             },
-        )
+        ),
+    )
 
-    return inputter.inputs
+    return inputter
 
 
-def n_infected_component(params: dict) -> int:
-    if params["n"] - params["n_immune"] == 1:
+def _exec_n_infected(inputs: dict) -> int:
+    # need special handling for the case where everyone is immune but 1,
+    # because streamlit sliders must have a range
+    if inputs["n"] - inputs["n_immune"] == 1:
         st.text("No. initially infected: 1")
         return 1
     else:
         return st.slider(
             "No. initially infected",
             min_value=1,
-            max_value=params["n"] - params["n_immune"],
+            max_value=inputs["n"] - inputs["n_immune"],
             step=1,
             value=1,
         )
