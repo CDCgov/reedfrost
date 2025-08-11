@@ -103,13 +103,8 @@ def get_params() -> dict:
             value=42,
         )
 
-    # derived parameters ------------------------------------------------------
-    n_susceptible = n - n_immune - n_infected
-    assert n_susceptible > 0
-
     return {
         "model": model,
-        "n_susceptible": n_susceptible,
         "n_infected": n_infected,
         "n_immune": n_immune,
         "brn": brn,
@@ -122,6 +117,11 @@ def get_params() -> dict:
 
 
 def get_results(params) -> dict:
+    # derive parameters
+    n_susceptible = params["n"] - params["n_immune"] - params["n_infected"]
+    assert n_susceptible > 0
+    params["n_susceptible"] = n_susceptible
+
     match (params["result_type"], params["metric"]):
         case ("Trajectories", _):
             return model_trajectories(params)
