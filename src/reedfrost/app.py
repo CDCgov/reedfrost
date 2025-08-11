@@ -1,3 +1,8 @@
+import importlib.resources
+import json
+from types import ModuleType
+from typing import Any, Callable, Literal
+
 import altair as alt
 import numpy as np
 import numpy.random
@@ -6,6 +11,70 @@ import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
 import reedfrost
+
+
+class Inputter:
+    def __init__(self):
+        """
+        Track streamlit input components and the values they return
+        """
+        self.inputs = {}
+
+    def add_component(
+        self,
+        key: str,
+        method_name: str,
+        kwargs: dict,
+        kwargs_type: Literal["fixed", "callable"] = "callable",
+        c: DeltaGenerator | ModuleType | None = None,
+    ):
+        """
+        Add a streamlit input component. The resulting value is stored in
+        self.inputs
+
+        In the simplest case, the function arguments to the component method are fixed
+        (e.g., a slider that goes from 0 to 100). In other cases, a component depends on
+        inputs collected before it (e.g., a slider that goes from 0 to N, where N was
+        set by a previous slider).
+
+        If `kwargs_type` is `"callable"`, and a value in `kwargs` is callable, then that
+        value will be replaced by the result of calling that callable on the dictionary
+        of inputs collected so far. If `"fixed"`, then the values are not updated.
+        If you want a kwarg to be a function (e.g., a label formatter), then either use
+        `"fixed"` or allow for a dummy call like `lambda _: lambda x: my_formatting(x)`.
+
+        Args:
+            key: The key under which the value will be stored in self.inputs
+            method_name: The name of the streamlit method to call (e.g., "slider")
+            kwargs: The keyword arguments to pass to the method (e.g., "label", "min_value")
+            kwargs_type: how to update the kwargs before calling the method
+            c: The streamlit component or module to use; if None, use st
+        """
+        if c is None:
+            c = st
+
+        assert method_name in dir(c)
+        assert key not in self.inputs
+
+        match kwargs_type:
+            case "fixed":
+                pass
+            case "callable":
+                kwargs = {
+                    k: v(self.inputs) if callable(v) else v for k, v in kwargs.items()
+                }
+            case _:
+                raise RuntimeError(f"Unknown kwargs_type: {kwargs_type}")
+
+        self.inputs[key] = getattr(c, method_name)(**kwargs)
+
+    def add_custom_component(self, key: str, method: Callable[[dict[str, Any]], Any]):
+        assert key not in self.inputs
+        self.inputs[key] = method(self.inputs)
+
+    def add_value(self, key: str, value):
+        assert key not in self.inputs
+        self.inputs[key] = value
 
 
 def app():
@@ -31,89 +100,127 @@ def app():
 
 def get_params() -> dict:
     st.header("Input parameters")
-    n = st.slider("Population size", min_value=1, max_value=100, step=1, value=10)
+    inputter = Inputter()
+    inputter.add_component(
+        "n",
+        "slider",
+        kwargs={
+            "label": "Population size",
+            "min_value": 1,
+            "max_value": 100,
+            "step": 1,
+            "value": 10,
+        },
+    )
 
     # user input is in proportions, but we get the integer number
-    n_immune = st.select_slider(
-        "Proportion initially immune",
-        # values are from 0 to N-1, leaving space for at least 1 infected
-        options=range(0, n),
-        value=0,
-        format_func=lambda x: f"{x / n:.0%}",
+    inputter.add_component(
+        "n_immune",
+        "select_slider",
+        kwargs={
+            "label": "Proportion initially immune",
+            # values are from 0 to N-1, leaving space for at least 1 infected
+            "options": lambda p: range(0, p["n"]),
+            "value": 0,
+            "format_func": lambda p: lambda x: f"{x / p['n']:.0%}",
+        },
     )
 
-    brn = st.slider(
-        "Basic reproduction number",
-        min_value=0.0,
-        max_value=min(15.0, float(n)),
-        step=0.1,
-        format="%.1f",
-        value=min(1.5, float(n)),
+    inputter.add_component(
+        "brn",
+        "slider",
+        kwargs={
+            "label": "Basic reproduction number",
+            "min_value": 0.0,
+            "max_value": lambda p: min(15.0, float(p["n"])),
+            "step": 0.1,
+            "format": "%.1f",
+            "value": lambda p: min(1.5, float(p["n"])),
+        },
     )
 
-    model = st.segmented_control(
-        "Model",
-        options=["Reed-Frost", "Enko", "Greenwood"],
-        default="Reed-Frost",
+    inputter.add_component(
+        "model",
+        "segmented_control",
+        kwargs={
+            "label": "Model",
+            "options": ["Reed-Frost", "Enko", "Greenwood"],
+            "default": "Reed-Frost",
+        },
     )
-    assert model is not None
 
-    result_type = st.segmented_control(
-        "Results type",
-        options=["Trajectories", "Theoretical"],
-        default="Trajectories",
+    inputter.add_component(
+        "result_type",
+        "segmented_control",
+        kwargs={
+            "label": "Results type",
+            "options": ["Trajectories", "Theoretical"],
+            "default": "Trajectories",
+        },
     )
-    assert result_type is not None
 
-    metric = st.segmented_control(
-        "Infections metric",
-        options=["Cumulative", "Incident"],
-        default="Cumulative",
+    inputter.add_component(
+        "metric",
+        "segmented_control",
+        kwargs={
+            "label": "Infections metric",
+            "options": ["Cumulative", "Incident"],
+            "default": "Cumulative",
+        },
     )
-    assert metric is not None
 
     with st.expander("Advanced options", expanded=False):
         # need special handling for the case where everyone is immune but 1,
         # because streamlit sliders must have a range
-        if n - n_immune == 1:
-            n_infected = 1
-            st.text("No. initially infected: 1")
-        else:
-            n_infected = st.slider(
-                "No. initially infected",
-                min_value=1,
-                max_value=n - n_immune,
-                step=1,
-                value=1,
-            )
+        inputter.add_custom_component("n_infected", n_infected_component)
 
-        n_simulations = st.slider(
-            "No. simulations",
-            min_value=5,
-            max_value=250,
-            step=1,
-            value=100,
+        inputter.add_component(
+            "n_simulations",
+            "slider",
+            kwargs={
+                "label": "No. simulations",
+                "min_value": 5,
+                "max_value": 250,
+                "step": 1,
+                "value": 100,
+            },
         )
 
-        seed = st.number_input(
-            "Random seed",
-            min_value=0,
-            max_value=2**32 - 1,
-            step=1,
-            value=42,
+        inputter.add_component(
+            "seed",
+            "number_input",
+            kwargs={
+                "label": "Random seed",
+                "min_value": 0,
+                "max_value": 2**32 - 1,
+                "step": 1,
+                "value": 42,
+            },
         )
 
-    return {
-        "model": model,
-        "n_infected": n_infected,
-        "n_immune": n_immune,
-        "brn": brn,
-        "n": n,
-        "n_simulations": n_simulations,
-        "seed": seed,
-        "result_type": result_type,
-        "metric": metric,
-    }
+    return inputter.inputs
+
+
+def n_infected_component(params: dict) -> int:
+    if params["n"] - params["n_immune"] == 1:
+        st.text("No. initially infected: 1")
+        return 1
+    else:
+        return st.slider(
+            "No. initially infected",
+            min_value=1,
+            max_value=params["n"] - params["n_immune"],
+            step=1,
+            value=1,
+        )
+
+
+@st.cache_resource
+def load_inputs() -> dict:
+    with importlib.resources.open_text("reedfrost", "inputs.json") as f:
+        inputs = json.load(f)
+
+    return inputs
 
 
 def get_results(params) -> dict:
