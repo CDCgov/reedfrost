@@ -1,10 +1,11 @@
 MANIFEST_FILES = manifest.json requirements.txt
-SOURCE_FILES := src/reedfrost/__init__.py src/reedfrost/app.py
+SOURCE_FILES := src/reedfrost/__init__.py src/reedfrost/app/__init__.py src/reedfrost/app/input.py src/reedfrost/app/model.py src/reedfrost/app/view.py
+ENTRYPOINT := src/reedfrost/app/__init__.py
 
 .PHONY: local deploy clean docs
 
 local:
-	poetry run streamlit run src/reedfrost/app.py
+	uv run streamlit run $(ENTRYPOINT)
 
 deploy: $(MANIFEST_FILES) $(SOURCE_FILES)
 	rsconnect deploy \
@@ -16,11 +17,11 @@ manifest.json requirements.txt: $(SOURCE_FILES)
 	rsconnect write-manifest streamlit . \
 		$(SOURCE_FILES) \
 		--exclude "**" \
-		--entrypoint src/reedfrost/app.py \
+		--entrypoint $(ENTRYPOINT) \
 		--overwrite
 
 clean:
 	rm -f $(MANIFEST_FILES)
 
 docs:
-	poetry run mkdocs serve
+	uv run mkdocs serve
