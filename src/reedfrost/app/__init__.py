@@ -6,7 +6,7 @@ from reedfrost.app.view import view
 
 
 def run_app():
-    inputter = register_inputs()
+    app = App()
 
     # set up app input layout and collect input values ------------------------
     st.set_page_config(
@@ -15,18 +15,18 @@ def run_app():
     st.title("Chain binomial models")
 
     with st.sidebar:
-        inputter.place_component("n")
-        inputter.place_component("n_immune")
-        inputter.place_component("brn")
-        inputter.place_component("model")
-        inputter.place_component("result_type")
-        inputter.place_component("metric")
+        app.place_component("n")
+        app.place_component("n_immune")
+        app.place_component("brn")
+        app.place_component("model")
+        app.place_component("result_type")
+        app.place_component("metric")
 
         st.header("Input parameters")
         with st.expander("Advanced options", expanded=False):
-            inputter.place_component("n_infected")
-            inputter.place_component("n_simulations")
-            inputter.place_component("seed")
+            app.place_component("n_infected")
+            app.place_component("n_simulations")
+            app.place_component("seed")
 
         st.divider()
         st.header("Links")
@@ -37,10 +37,10 @@ def run_app():
         )
 
     # run the simulations/computations ----------------------------------------
-    results = get_results(inputter.inputs)
+    app.state["results"] = get_results(app.state)
 
     # render the results ------------------------------------------------------
-    view(inputter.inputs, results)
+    view(app.state)
 
 
 if __name__ == "__main__":
