@@ -1,35 +1,28 @@
-[tool.poetry]
+[project]
 name = "reedfrost"
-version = "0.3.0"
+version = "0.3.1"
 description = "Reed-Frost disease dynamics"
-authors = ["Scott Olesen <ulp7@cdc.gov>"]
-license = "Apache 2"
+authors = [{ name = "Scott Olesen", email = "ulp7@cdc.gov" }]
+requires-python = ">=3.12"
 readme = "README.md"
+license = "Apache-2.0"
+dependencies = ["numpy>=2.2.3,<3", "scipy>=1.15.2,<2"]
 
-[tool.poetry.dependencies]
-python = ">=3.12"
-numpy = "^2.2.3"
-scipy = "^1.15.2"
-streamlit = "^1.42.2"
-altair = "^5.5.0"
-polars = "^1.23.0"
+[project.optional-dependencies]
+app = ["streamlit>=1.42.2,<2", "altair>=5.5.0,<6", "polars>=1.23.0,<2"]
 
+[dependency-groups]
+dev = ["pytest>=8.3.4,<9", "rsconnect-python>=1.25.2,<2"]
+mkdocs = [
+    "mkdocs>=1.6.1,<2",
+    "mkdocs-material>=9.6.5,<10",
+    "mkdocstrings[python]>=0.28.2,<0.29",
+    "mdx-truly-sane-lists~=1.3",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.4"
-rsconnect-python = "^1.25.2"
-
-
-[tool.poetry.group.mkdocs.dependencies]
-mkdocs = "^1.6.1"
-mkdocs-material = "^9.6.5"
-mkdocstrings = {extras = ["python"], version = "^0.28.2"}
-mdx-truly-sane-lists = "^1.3"
-
-
-[tool.poetry.extras]
-app = ["streamlit", "altair", "polars"]
+[tool.uv]
+default-groups = ["dev", "mkdocs"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

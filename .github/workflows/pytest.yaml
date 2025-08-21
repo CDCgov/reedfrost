@@ -11,13 +11,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - run: pipx install poetry
-        shell: bash
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.13"
-          cache: poetry
-      - run: |
-          poetry install
-          poetry run pytest -v
-        shell: bash
+          enable-cache: true
+      - run: uv sync --all-extras --all-groups
+      - run: uv run pytest -v
