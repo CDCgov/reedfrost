@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 
 [[package]]
@@ -786,7 +786,9 @@ version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
+    { name = "polars" },
     { name = "scipy" },
+    { name = "streamlit" },
 ]
 
 [package.optional-dependencies]
@@ -812,8 +814,10 @@ mkdocs = [
 requires-dist = [
     { name = "altair", marker = "extra == 'app'", specifier = ">=5.5.0,<6" },
     { name = "numpy", specifier = ">=2.2.3,<3" },
+    { name = "polars", specifier = ">=1.23.0" },
     { name = "polars", marker = "extra == 'app'", specifier = ">=1.23.0,<2" },
     { name = "scipy", specifier = ">=1.15.2,<2" },
+    { name = "streamlit", specifier = ">=1.42.2" },
     { name = "streamlit", marker = "extra == 'app'", specifier = ">=1.42.2,<2" },
 ]
 provides-extras = ["app"]

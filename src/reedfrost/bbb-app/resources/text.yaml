@@ -1,0 +1,24 @@
+page_title: Chain binomial models
+page_icon: 🧮
+n_label: Population size
+prop_immune_label: Proportion initially immune
+brn_label: Basic reproduction number
+model_label: Model
+result_type_label: Results type
+metric_label: Infections metric
+n_infected_label: No. initially infected
+n_simulations_label: No. simulations
+seed_label: Random seed
+input_header: Input parameters
+expander_title: Advanced options
+links_header: Links
+gh_page: https://github.com/CDCgov/reedfrost/
+gh_label: repo
+gh_icon: 🗂️
+doc_page: https://cdcgov.github.io/reedfrost/
+doc_label: documentation
+doc_icon: 📝
+susceptible_label: Initial susceptible
+immune_label: Initial immune
+infected_label: Initial infected
+no_results_label: Calculating...

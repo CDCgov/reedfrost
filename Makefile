@@ -1,6 +1,6 @@
 MANIFEST_FILES = manifest.json requirements.txt
 SOURCE_FILES := src/reedfrost/__init__.py src/reedfrost/app/__init__.py src/reedfrost/app/input.py src/reedfrost/app/model.py src/reedfrost/app/view.py
-ENTRYPOINT := src/reedfrost/app/__init__.py
+ENTRYPOINT := src/reedfrost/bbb-app/main.py
 
 .PHONY: local deploy clean docs
 
