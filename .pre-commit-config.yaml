@@ -12,12 +12,7 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.8
     hooks:
-      # Sort imports
       - id: ruff
-        args: ["check", "--select", "I", "--fix"]
-      # Run the linter
-      - id: ruff
-      # Run the formatter
       - id: ruff-format
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0
