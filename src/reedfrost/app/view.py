@@ -223,7 +223,7 @@ def trajectories_chart(
             alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
             tooltip=alt.value(None),
         )
-        .add_state(
+        .add_params(
             alt.selection_point("point_selection", on="pointerover", fields=["peak_y"])
         )
     )
