@@ -19,27 +19,30 @@ def ui_charts(controller: Controller) -> None:
     container.text("Calculating...")
 
     results = controller.get("results")
+
     if results is not None:
+        metric = controller.get("metric")
+        assert isinstance(metric, str)
+
         match result_type := controller.get("result_type"):
             case "Trajectories":
-                trajectories_chart(container=container, controller=controller)
+                trajectories_chart(container=container, results=results, metric=metric)
             case "Theoretical":
-                theoretical_chart(container=container, controller=controller)
+                theoretical_chart(container=container, results=results, metric=metric)
             case _:
                 raise ValueError(f"Unknown result type: {result_type}")
 
 
 def theoretical_chart(
     container: DeltaGenerator,
-    controller: Controller,
+    results: dict,
+    metric: str,
     min_bins: int = 10,
     max_bins: int = 20,
     prob_diff_eps: float = 0.005,
     prob_bins: int = 10,
 ):
-    results = controller.get("results")
-    assert results is not None
-    match controller.get("metric"):
+    match metric:
         case "Incident":
             # nesting "state" under results is confusing
             state_data = results["state"].pipe(
@@ -61,7 +64,7 @@ def theoretical_chart(
                     alt.Y(
                         "Incident:O",
                         sort=state_data["Incident"].to_list(),
-                        title=f"{controller.get('metric')} no. infected",
+                        title=f"{metric} no. infected",
                     ),
                     color=alt.condition(
                         alt.datum.prob == 0,
@@ -122,12 +125,13 @@ def theoretical_chart(
             )
             container.altair_chart(state_chart | final_chart)
         case _:
-            raise ValueError(f"Unknown metric: {controller.get('metric')}")
+            raise ValueError(f"Unknown metric: {metric}")
 
 
 def trajectories_chart(
     container: DeltaGenerator,
-    controller: Controller,
+    results: dict,
+    metric: str,
     opacity: float = 1.0,
     stroke_width: float = 0.5,
     jitter_range: float = 0.8,
@@ -144,9 +148,6 @@ def trajectories_chart(
         else:
             st.session_state["y_selected"] = []
 
-    results = controller.get("results")
-
-    assert results is not None
     assert isinstance(results["traj"], pl.DataFrame)
     assert isinstance(results["peak_traj"], pl.DataFrame)
 
@@ -183,7 +184,7 @@ def trajectories_chart(
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
                 "y_jitter",
-                title=f"{controller.get('metric')} no. infected",
+                title=f"{metric} no. infected",
                 axis=alt.Axis(tickCount=max_y),
                 scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
@@ -215,7 +216,7 @@ def trajectories_chart(
     hist_chart = (
         alt.Chart(hist_data)
         .properties(
-            title=f"Maximum {controller.get('metric')} distribution",
+            title=f"Maximum {metric} distribution",
             height=chart_height,
         )
         .mark_bar()
@@ -223,7 +224,7 @@ def trajectories_chart(
             alt.X("count", title="No. simulations"),
             alt.Y(
                 "peak_y:N",
-                title=f"{controller.get('metric')} no. infected",
+                title=f"{metric} no. infected",
                 sort=hist_data["peak_y"].to_list(),
             ),
             alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
