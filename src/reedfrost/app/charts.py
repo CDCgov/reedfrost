@@ -4,38 +4,42 @@ import polars as pl
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
+from reedfrost.app.controller import Controller
 
-def view(state: dict) -> None:
+
+def ui_charts(controller: Controller) -> None:
     # display initial conditions ----------------------------------------------
     col1, col2, col3, _ = st.columns([1, 1, 1, 3])
-    col1.metric("Initial susceptible", state["n_susceptible"])
-    col2.metric("Initial immune", state["n_immune"])
-    col3.metric("Initial infected", state["n_infected"])
+    col1.metric("Initial susceptible", controller.get("n_susceptible"))
+    col2.metric("Initial immune", controller.get("n_immune"))
+    col3.metric("Initial infected", controller.get("n_infected"))
 
     # results -----------------------------------------------------------------
-    view_c = st.empty()
-    view_c.text("Calculating...")
+    container = st.empty()
+    container.text("Calculating...")
 
-    if "results" in state:
-        match state["result_type"]:
+    results = controller.get("results")
+    if results is not None:
+        match result_type := controller.get("result_type"):
             case "Trajectories":
-                trajectories_chart(c=view_c, state=state)
+                trajectories_chart(container=container, controller=controller)
             case "Theoretical":
-                theoretical_chart(c=view_c, state=state)
+                theoretical_chart(container=container, controller=controller)
             case _:
-                raise ValueError(f"Unknown result type: {state['result_type']}")
+                raise ValueError(f"Unknown result type: {result_type}")
 
 
 def theoretical_chart(
-    c: DeltaGenerator,
-    state: dict,
+    container: DeltaGenerator,
+    controller: Controller,
     min_bins: int = 10,
     max_bins: int = 20,
     prob_diff_eps: float = 0.005,
     prob_bins: int = 10,
 ):
-    results = state["results"]
-    match state["metric"]:
+    results = controller.get("results")
+    assert results is not None
+    match controller.get("metric"):
         case "Incident":
             # nesting "state" under results is confusing
             state_data = results["state"].pipe(
@@ -57,7 +61,7 @@ def theoretical_chart(
                     alt.Y(
                         "Incident:O",
                         sort=state_data["Incident"].to_list(),
-                        title=f"{state['metric']} no. infected",
+                        title=f"{controller.get('metric')} no. infected",
                     ),
                     color=alt.condition(
                         alt.datum.prob == 0,
@@ -67,7 +71,7 @@ def theoretical_chart(
                 )
             )
 
-            c.altair_chart(state_chart)
+            container.altair_chart(state_chart)
         case "Cumulative":
             final_data = results["final"].pipe(
                 _bin_data,
@@ -116,14 +120,14 @@ def theoretical_chart(
                     alt.X("n_expected"),
                 )
             )
-            c.altair_chart(state_chart | final_chart)
+            container.altair_chart(state_chart | final_chart)
         case _:
-            raise ValueError(f"Unknown metric: {state['metric']}")
+            raise ValueError(f"Unknown metric: {controller.get('metric')}")
 
 
 def trajectories_chart(
-    c: DeltaGenerator,
-    state: dict,
+    container: DeltaGenerator,
+    controller: Controller,
     opacity: float = 1.0,
     stroke_width: float = 0.5,
     jitter_range: float = 0.8,
@@ -140,8 +144,9 @@ def trajectories_chart(
         else:
             st.session_state["y_selected"] = []
 
-    results = state["results"]
+    results = controller.get("results")
 
+    assert results is not None
     assert isinstance(results["traj"], pl.DataFrame)
     assert isinstance(results["peak_traj"], pl.DataFrame)
 
@@ -178,7 +183,7 @@ def trajectories_chart(
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
                 "y_jitter",
-                title=f"{state['metric']} no. infected",
+                title=f"{controller.get('metric')} no. infected",
                 axis=alt.Axis(tickCount=max_y),
                 scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
@@ -210,14 +215,15 @@ def trajectories_chart(
     hist_chart = (
         alt.Chart(hist_data)
         .properties(
-            title=f"Maximum {state['metric']} distribution", height=chart_height
+            title=f"Maximum {controller.get('metric')} distribution",
+            height=chart_height,
         )
         .mark_bar()
         .encode(
             alt.X("count", title="No. simulations"),
             alt.Y(
                 "peak_y:N",
-                title=f"{state['metric']} no. infected",
+                title=f"{controller.get('metric')} no. infected",
                 sort=hist_data["peak_y"].to_list(),
             ),
             alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
@@ -228,7 +234,7 @@ def trajectories_chart(
         )
     )
 
-    col1, col2 = c.columns([1, 1])
+    col1, col2 = container.columns([1, 1])
     col1.altair_chart(line_chart)
     col2.altair_chart(hist_chart, on_select="rerun", key="selection")
 
