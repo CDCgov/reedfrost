@@ -35,13 +35,13 @@ class StreamlitComponent(Component):
         return getattr(c, self.method_name)(**kwargs)
 
 
-class Inputter:
+class App:
     def __init__(self):
         """
         Track streamlit input components and the values they return
         """
         self.components = {}
-        self.inputs = {}
+        self.state = {}
 
     def register_component(self, key: str, component: Component):
         assert key not in self.components
@@ -57,20 +57,20 @@ class Inputter:
         """
         component = self.components[key]
         if isinstance(component, StreamlitComponent):
-            self.inputs[key] = component(self.inputs, c=c)
+            self.state[key] = component(self.state, c=c)
         elif isinstance(component, Component):
-            self.inputs[key] = component(self.inputs)
+            self.state[key] = component(self.state)
         else:
             raise RuntimeError()
 
-    def inset_input_value(self, key: str, value):
-        assert key not in self.inputs
-        self.inputs[key] = value
+    def insert_input_value(self, key: str, value):
+        assert key not in self.state
+        self.state[key] = value
 
 
-def register_inputs() -> Inputter:
-    inputter = Inputter()
-    inputter.register_component(
+def register_components() -> App:
+    app = App()
+    app.register_component(
         "n",
         StreamlitComponent(
             "slider",
@@ -85,7 +85,7 @@ def register_inputs() -> Inputter:
     )
 
     # user input is in proportions, but we get the integer number
-    inputter.register_component(
+    app.register_component(
         "n_immune",
         StreamlitComponent(
             "select_slider",
@@ -99,7 +99,7 @@ def register_inputs() -> Inputter:
         ),
     )
 
-    inputter.register_component(
+    app.register_component(
         "brn",
         StreamlitComponent(
             "slider",
@@ -114,7 +114,7 @@ def register_inputs() -> Inputter:
         ),
     )
 
-    inputter.register_component(
+    app.register_component(
         "model",
         StreamlitComponent(
             "segmented_control",
@@ -126,7 +126,7 @@ def register_inputs() -> Inputter:
         ),
     )
 
-    inputter.register_component(
+    app.register_component(
         "result_type",
         StreamlitComponent(
             "segmented_control",
@@ -138,7 +138,7 @@ def register_inputs() -> Inputter:
         ),
     )
 
-    inputter.register_component(
+    app.register_component(
         "metric",
         StreamlitComponent(
             "segmented_control",
@@ -150,9 +150,9 @@ def register_inputs() -> Inputter:
         ),
     )
 
-    inputter.register_component("n_infected", Component(_exec_n_infected))
+    app.register_component("n_infected", Component(_exec_n_infected))
 
-    inputter.register_component(
+    app.register_component(
         "n_simulations",
         StreamlitComponent(
             "slider",
@@ -166,7 +166,7 @@ def register_inputs() -> Inputter:
         ),
     )
 
-    inputter.register_component(
+    app.register_component(
         "seed",
         StreamlitComponent(
             "number_input",
@@ -180,7 +180,7 @@ def register_inputs() -> Inputter:
         ),
     )
 
-    return inputter
+    return app
 
 
 def _exec_n_infected(inputs: dict) -> int:

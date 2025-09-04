@@ -1,12 +1,12 @@
 import streamlit as st
 
-from reedfrost.app.input import register_inputs
+from reedfrost.app.input import register_components
 from reedfrost.app.model import get_results
 from reedfrost.app.view import view
 
 
 def run_app():
-    app = App()
+    app = register_components()
 
     # set up app input layout and collect input values ------------------------
     st.set_page_config(

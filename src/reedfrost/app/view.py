@@ -5,40 +5,39 @@ import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
 
-def view(params: dict, results: dict) -> None:
+def view(state: dict) -> None:
     # display initial conditions ----------------------------------------------
     col1, col2, col3, _ = st.columns([1, 1, 1, 3])
-    col1.metric("Initial susceptible", params["n_susceptible"])
-    col2.metric("Initial immune", params["n_immune"])
-    col3.metric("Initial infected", params["n_infected"])
+    col1.metric("Initial susceptible", state["n_susceptible"])
+    col2.metric("Initial immune", state["n_immune"])
+    col3.metric("Initial infected", state["n_infected"])
 
     # results -----------------------------------------------------------------
     view_c = st.empty()
     view_c.text("Calculating...")
 
-    if results is None:
-        pass
-    else:
-        match params["result_type"]:
+    if "results" in state:
+        match state["result_type"]:
             case "Trajectories":
-                trajectories_chart(c=view_c, results=results, params=params)
+                trajectories_chart(c=view_c, state=state)
             case "Theoretical":
-                theoretical_chart(c=view_c, results=results, params=params)
+                theoretical_chart(c=view_c, state=state)
             case _:
-                raise ValueError(f"Unknown result type: {params['result_type']}")
+                raise ValueError(f"Unknown result type: {state['result_type']}")
 
 
 def theoretical_chart(
     c: DeltaGenerator,
-    results: dict,
-    params: dict,
+    state: dict,
     min_bins: int = 10,
     max_bins: int = 20,
     prob_diff_eps: float = 0.005,
     prob_bins: int = 10,
 ):
-    match params["metric"]:
+    results = state["results"]
+    match state["metric"]:
         case "Incident":
+            # nesting "state" under results is confusing
             state_data = results["state"].pipe(
                 _bin_data,
                 "Incident",
@@ -58,7 +57,7 @@ def theoretical_chart(
                     alt.Y(
                         "Incident:O",
                         sort=state_data["Incident"].to_list(),
-                        title=f"{params['metric']} no. infected",
+                        title=f"{state['metric']} no. infected",
                     ),
                     color=alt.condition(
                         alt.datum.prob == 0,
@@ -119,13 +118,12 @@ def theoretical_chart(
             )
             c.altair_chart(state_chart | final_chart)
         case _:
-            raise ValueError(f"Unknown metric: {params['metric']}")
+            raise ValueError(f"Unknown metric: {state['metric']}")
 
 
 def trajectories_chart(
     c: DeltaGenerator,
-    params: dict,
-    results: dict,
+    state: dict,
     opacity: float = 1.0,
     stroke_width: float = 0.5,
     jitter_range: float = 0.8,
@@ -141,6 +139,8 @@ def trajectories_chart(
             st.session_state["y_selected"] = [new_selection]
         else:
             st.session_state["y_selected"] = []
+
+    results = state["results"]
 
     assert isinstance(results["traj"], pl.DataFrame)
     assert isinstance(results["peak_traj"], pl.DataFrame)
@@ -178,7 +178,7 @@ def trajectories_chart(
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
                 "y_jitter",
-                title=f"{params['metric']} no. infected",
+                title=f"{state['metric']} no. infected",
                 axis=alt.Axis(tickCount=max_y),
                 scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
@@ -210,20 +210,20 @@ def trajectories_chart(
     hist_chart = (
         alt.Chart(hist_data)
         .properties(
-            title=f"Maximum {params['metric']} distribution", height=chart_height
+            title=f"Maximum {state['metric']} distribution", height=chart_height
         )
         .mark_bar()
         .encode(
             alt.X("count", title="No. simulations"),
             alt.Y(
                 "peak_y:N",
-                title=f"{params['metric']} no. infected",
+                title=f"{state['metric']} no. infected",
                 sort=hist_data["peak_y"].to_list(),
             ),
             alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
             tooltip=alt.value(None),
         )
-        .add_params(
+        .add_state(
             alt.selection_point("point_selection", on="pointerover", fields=["peak_y"])
         )
     )
