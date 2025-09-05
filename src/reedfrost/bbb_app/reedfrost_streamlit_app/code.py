@@ -4,16 +4,119 @@ import polars as pl
 import streamlit as st
 
 
+def trajectories_chart(
+    app,
+    opacity: float = 1.0,
+    stroke_width: float = 0.5,
+    jitter_range: float = 0.8,
+    chart_height: float = 500.0,
+):
+    try:
+        new_selection = _parse_selection(app.get_data("selection"))
+    except KeyError:
+        new_selection = None
+
+    if new_selection is not None:
+        app.set_data("y_selected", [new_selection])
+    else:
+        app.set_data("y_selected", [])
+
+    assert isinstance(app.get_data("traj"), pl.DataFrame)
+    assert isinstance(app.get_data("peak_traj"), pl.DataFrame)
+
+    data = (
+        app.get_data("traj")
+        # add jitter
+        .select(["iter", "t", "y"])
+        .pipe(_jitter_trajectories, jitter_range=jitter_range)
+        # merge the peak & selection data back in
+        .join(app.get_data("peak_traj"), on=["iter"], how="left", validate="m:1")
+        # put in order for good plotting
+        .with_columns(is_selected=(pl.col("peak_y").is_in(app.get_data("y_selected"))))
+        .sort("is_selected")
+    )
+
+    # find the maximum y value over all iterations
+    max_y = data.select(pl.col("y").max()).item()
+    last_gen = data.select(pl.col("t").max()).item()
+
+    my_colors = ["#1E4498", "#F78F47"]
+
+    line_chart = (
+        alt.Chart(data)
+        .properties(title="Simulated outbreaks", height=chart_height)
+        .encode(
+            # need +1 because generations are zero-indexed; if last gen is 0, that's
+            # one generation
+            alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
+            alt.Y(
+                "y_jitter",
+                title=f"{app.get_data('metric')} no. infected",
+                axis=alt.Axis(tickCount=max_y),
+                scale=alt.Scale(domain=[0, max_y + 0.5]),
+            ),
+            alt.Detail("iter"),
+            alt.Color(
+                "is_selected",
+                scale=alt.Scale(range=my_colors),
+                legend=None,
+            ),
+            tooltip=alt.value(None),
+        )
+        .mark_line(strokeWidth=stroke_width, opacity=opacity)
+    )
+
+    hist_data = (
+        app.get_data("peak_traj")
+        .group_by("peak_y")
+        .agg(pl.col("iter").count().alias("count"))
+        .join(
+            pl.DataFrame({"peak_y": range(max_y + 1), "count": 0}),
+            on=["peak_y", "count"],
+            how="full",
+            coalesce=True,
+        )
+        .with_columns(is_selected=pl.col("peak_y").is_in(app.get_data("y_selected")))
+        .sort("peak_y", descending=True)
+    )
+
+    hist_chart = (
+        alt.Chart(hist_data)
+        .properties(
+            title=f"Maximum {app.get_data('metric')} distribution",
+            height=chart_height,
+        )
+        .mark_bar()
+        .encode(
+            alt.X("count", title="No. simulations"),
+            alt.Y(
+                "peak_y:N",
+                title=f"{app.get_data('metric')} no. infected",
+                sort=hist_data["peak_y"].to_list(),
+            ),
+            alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
+            tooltip=alt.value(None),
+        )
+        .add_params(
+            alt.selection_point("point_selection", on="pointerover", fields=["peak_y"])
+        )
+    )
+
+    col1, col2 = st.columns([1, 1])
+    col1.altair_chart(line_chart)
+    col2.altair_chart(hist_chart, on_select="rerun", key="selection")
+
+
 def theoretical_chart(
-    controller,
+    app,
     min_bins: int = 10,
     max_bins: int = 20,
     prob_diff_eps: float = 0.005,
     prob_bins: int = 10,
 ):
-    match controller.get_data("metric"):
+    match app.get_data("metric"):
         case "Incident":
-            state_data = controller.get_data("state").pipe(
+            state_data = app.get_data("state").pipe(
                 _bin_data,
                 "Incident",
                 "prob",
@@ -32,7 +135,7 @@ def theoretical_chart(
                     alt.Y(
                         "Incident:O",
                         sort=state_data["Incident"].to_list(),
-                        title=f"{controller.get_data('metric')} no. infected",
+                        title=f"{app.get_data('metric')} no. infected",
                     ),
                     color=alt.condition(
                         alt.datum.prob == 0,
@@ -44,7 +147,7 @@ def theoretical_chart(
 
             st.altair_chart(state_chart)
         case "Cumulative":
-            final_data = controller.get_data("final").pipe(
+            final_data = app.get_data("final").pipe(
                 _bin_data,
                 "cum_i_max",
                 "n_expected",
@@ -52,7 +155,7 @@ def theoretical_chart(
                 max_bins=max_bins,
             )
 
-            state_data = controller.get_data("state").pipe(
+            state_data = app.get_data("state").pipe(
                 _bin_data,
                 "Cumulative",
                 "prob",
@@ -93,114 +196,7 @@ def theoretical_chart(
             )
             st.altair_chart(state_chart | final_chart)
         case _:
-            raise ValueError(f"Unknown metric: {controller.get_data('metric')}")
-
-
-def trajectories_chart(
-    controller,
-    opacity: float = 1.0,
-    stroke_width: float = 0.5,
-    jitter_range: float = 0.8,
-    chart_height: float = 500.0,
-):
-    try:
-        new_selection = _parse_selection(controller.get_data("selection"))
-    except KeyError:
-        new_selection = None
-
-    if new_selection is not None:
-        controller.set_data("y_selected", [new_selection])
-    else:
-        controller.set_data("y_selected", [])
-
-    assert isinstance(controller.get_data("traj"), pl.DataFrame)
-    assert isinstance(controller.get_data("peak_traj"), pl.DataFrame)
-
-    data = (
-        controller.get_data("traj")
-        # add jitter
-        .select(["iter", "t", "y"])
-        .pipe(_jitter_trajectories, jitter_range=jitter_range)
-        # merge the peak & selection data back in
-        .join(controller.get_data("peak_traj"), on=["iter"], how="left", validate="m:1")
-        # put in order for good plotting
-        .with_columns(
-            is_selected=(pl.col("peak_y").is_in(controller.get_data("y_selected")))
-        )
-        .sort("is_selected")
-    )
-
-    # find the maximum y value over all iterations
-    max_y = data.select(pl.col("y").max()).item()
-    last_gen = data.select(pl.col("t").max()).item()
-
-    my_colors = ["#1E4498", "#F78F47"]
-
-    line_chart = (
-        alt.Chart(data)
-        .properties(title="Simulated outbreaks", height=chart_height)
-        .encode(
-            # need +1 because generations are zero-indexed; if last gen is 0, that's
-            # one generation
-            alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
-            alt.Y(
-                "y_jitter",
-                title=f"{controller.get_data('metric')} no. infected",
-                axis=alt.Axis(tickCount=max_y),
-                scale=alt.Scale(domain=[0, max_y + 0.5]),
-            ),
-            alt.Detail("iter"),
-            alt.Color(
-                "is_selected",
-                scale=alt.Scale(range=my_colors),
-                legend=None,
-            ),
-            tooltip=alt.value(None),
-        )
-        .mark_line(strokeWidth=stroke_width, opacity=opacity)
-    )
-
-    hist_data = (
-        controller.get_data("peak_traj")
-        .group_by("peak_y")
-        .agg(pl.col("iter").count().alias("count"))
-        .join(
-            pl.DataFrame({"peak_y": range(max_y + 1), "count": 0}),
-            on=["peak_y", "count"],
-            how="full",
-            coalesce=True,
-        )
-        .with_columns(
-            is_selected=pl.col("peak_y").is_in(controller.get_data("y_selected"))
-        )
-        .sort("peak_y", descending=True)
-    )
-
-    hist_chart = (
-        alt.Chart(hist_data)
-        .properties(
-            title=f"Maximum {controller.get_data('metric')} distribution",
-            height=chart_height,
-        )
-        .mark_bar()
-        .encode(
-            alt.X("count", title="No. simulations"),
-            alt.Y(
-                "peak_y:N",
-                title=f"{controller.get_data('metric')} no. infected",
-                sort=hist_data["peak_y"].to_list(),
-            ),
-            alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
-            tooltip=alt.value(None),
-        )
-        .add_params(
-            alt.selection_point("point_selection", on="pointerover", fields=["peak_y"])
-        )
-    )
-
-    col1, col2 = st.columns([1, 1])
-    col1.altair_chart(line_chart)
-    col2.altair_chart(hist_chart, on_select="rerun", key="selection")
+            raise ValueError(f"Unknown metric: {app.get_data('metric')}")
 
 
 def _parse_selection(x, name="point_selection", value="peak_y") -> int | None:
@@ -346,3 +342,21 @@ def _jittered(n: int, space: float) -> np.ndarray:
     """Deterministic jitter for n points"""
     half_width = space * (n - 1) / 2
     return np.linspace(-half_width, half_width, num=n)
+
+
+code = {
+    "n_immune_options": lambda app: list(range(0, app.get_data("n"))),
+    "n_immune_format_func": lambda app: lambda x: f"{x / app.get_data('n'):.0%}",
+    "brn_max_value": lambda app: min(15.0, float(app.get_data("n"))),
+    "n_infected_max_value": lambda app: app.get_data("n") - app.get_data("n_immune"),
+    "seed_max_value": lambda _: 2**32 - 1,
+    "get_n_susceptible": lambda app: app.get_data("n_susceptible"),
+    "get_n_immune": lambda app: app.get_data("n_immune"),
+    "get_n_infected": lambda app: app.get_data("n_infected"),
+    "one_susceptible": lambda app: app.get_data("n") - app.get_data("n_immune") == 1,
+    "results_not_available": lambda app: not app.get_data("results"),
+    "results_are_trajectories": lambda app: app.get_data("result_type")
+    == "Trajectories",
+    "trajectories_chart": lambda app: trajectories_chart(app),
+    "theoretical_chart": lambda app: theoretical_chart(app),
+}

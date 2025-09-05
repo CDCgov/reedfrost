@@ -1,8 +1,6 @@
 import streamlit as st
 import yaml
 
-from . import charts
-
 
 class View:
     def __init__(self, controller, ui_yaml):
@@ -10,15 +8,11 @@ class View:
             self.ui = yaml.safe_load(f)
         self.controller = controller
 
-    def page_config(self):
-        if "set_page_config" in self.ui[0]:
-            self.process_component(self.ui[0])
+    def initialize(self):
+        pass
 
     def display(self):
-        if "set_page_config" in self.ui[0]:
-            self.process_component(self.ui[1:])
-        else:
-            self.process_component(self.ui)
+        self.process_component(self.ui)
 
     def process_component(self, comp):
         if isinstance(comp, list):
@@ -32,85 +26,30 @@ class View:
                 if hasattr(self, f"handle_{k}"):
                     getattr(self, f"handle_{k}")(k, v)
                 else:
-                    self.make_st_call(k, v)
+                    self.display_component(k, v)
         elif isinstance(comp, str):
             if hasattr(self, f"handle_{comp}"):
                 getattr(self, f"handle_{comp}")()
             else:
-                self.make_st_call(comp, {})
+                self.display_component(comp, {})
         else:
             raise ValueError(self.yaml_format)
 
-    def make_st_call(self, k, v):
-        args = []
-        kwargs = {}
-        # single parameter
-        if not isinstance(v, dict):
-            if isinstance(v, str):
-                v = self.controller.format_string(v)
-            args.append(v)
-        # multiple parameters with processing to handle inputs
-        else:
-            keys_to_remove = []
-            entries_to_add = {}
-            for kk in v.keys():
-                if kk.startswith("code_"):
-                    entries_to_add[kk[5:]] = self.handle_code(kk, v[kk])
-                    keys_to_remove.append(kk)
-                elif isinstance(v[kk], str):
-                    v[kk] = self.controller.format_string(v[kk])
-            for kk in keys_to_remove:
-                v.pop(kk)
-            v.update(entries_to_add)
-            for kk in v.keys():
-                kwargs[kk] = v[kk]
+    def display_component(self, k, v):
+        print(f"Displaying component: {k} with value: {v}")
 
-        try:
-            return getattr(st, k)(*args, **kwargs)
-        except Exception as e:
-            raise type(e)(f"Error processing {k} component: {args}, {kwargs}") from e
-
-    def handle_code(self, _, code):
-        return self.controller.eval_code(code)
-
-    def handle_columns(self, k, v):
-        children = v.pop("children", [])
-        col_var = v.pop("key", "cols")
-        self.columns[col_var] = self.make_st_call(k, v)
-        for i, child in enumerate(children):
-            with self.columns[col_var][i]:
-                self.process_component(child["column"])
-
-    def handle_empty(self, _, v):
-        with st.empty():
-            self.process_component(v)
-
-    def handle_expander(self, k, v):
-        children = v.pop("children", [])
-        with self.make_st_call(k, v):
-            self.process_component(children)
+    def run_code(self, code):
+        return self.controller.run_code(code)
 
     def handle_if(self, _, block):
-        if self.handle_code(_, block.get("condition")):
+        if self.run_code(block.get("condition")[6:]):
             self.process_component(block.get("then"))
         else:
             # optional else by passing empty set of components
             # if the else key isn't found
             self.process_component(block.get("else", []))
 
-    def handle_sidebar(self, _, v):
-        with st.sidebar:
-            self.process_component(v)
-
-    def handle_trajectories_chart(self):
-        charts.trajectories_chart(self.controller)
-
-    def handle_theoretical_chart(self):
-        charts.theoretical_chart(self.controller)
-
-    default_name = {"segmented_control": "default"}
-
-    columns = {}
+    default_name = {}
 
     yaml_format = """
     Invalid YAML format - expecting:
@@ -137,3 +76,75 @@ class View:
           param1
           param2
     """
+
+
+class StreamlitView(View):
+    def initialize(self):
+        if "set_page_config" in self.ui[0]:
+            self.process_component(self.ui[0])
+
+    def display(self):
+        if "set_page_config" in self.ui[0]:
+            self.process_component(self.ui[1:])
+        else:
+            self.process_component(self.ui)
+
+    def display_component(self, k, v):
+        args = []
+        kwargs = {}
+        # single parameter
+        if not isinstance(v, dict):
+            if isinstance(v, str):
+                v = self.controller.format_string(v)
+            args.append(v)
+        # multiple parameters with processing to handle inputs
+        else:
+            keys_to_remove = []
+            entries_to_add = {}
+            for kk in v.keys():
+                if kk.startswith("code_"):
+                    entries_to_add[kk[5:]] = self.handle_code(kk, v[kk])
+                    keys_to_remove.append(kk)
+                elif isinstance(v[kk], str):
+                    if v[kk].startswith("_code"):
+                        if v[kk] == "_code":
+                            v[kk] = self.run_code(f"{v['key']}_{kk}")
+                        else:
+                            v[kk] = self.run_code(v[kk][6:])
+                    else:
+                        v[kk] = self.controller.format_string(v[kk])
+            for kk in keys_to_remove:
+                v.pop(kk)
+            v.update(entries_to_add)
+            for kk in v.keys():
+                kwargs[kk] = v[kk]
+
+        try:
+            return getattr(st, k)(*args, **kwargs)
+        except Exception as e:
+            raise type(e)(f"Error processing {k} component: {args}, {kwargs}") from e
+
+    def handle_columns(self, k, v):
+        children = v.pop("children", [])
+        col_var = v.pop("key", "cols")
+        self.columns[col_var] = self.display_component(k, v)
+        for i, child in enumerate(children):
+            with self.columns[col_var][i]:
+                self.process_component(child["column"])
+
+    def handle_empty(self, _, v):
+        with st.empty():
+            self.process_component(v)
+
+    def handle_expander(self, k, v):
+        children = v.pop("children", [])
+        with self.display_component(k, v):
+            self.process_component(children)
+
+    def handle_sidebar(self, _, v):
+        with st.sidebar:
+            self.process_component(v)
+
+    default_name = {"segmented_control": "default"}
+
+    columns = {}

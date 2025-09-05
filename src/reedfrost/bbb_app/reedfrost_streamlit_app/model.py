@@ -6,50 +6,51 @@ import streamlit as st
 import reedfrost
 
 
-def run_model(controller):
-    # derive parameters
-    result_type = controller.get_data("result_type")
-    metric = controller.get_data("metric")
+def run_model(app):
+    app.set_data("results", False)
 
-    controller.set_data(
+    # derive parameters
+    result_type = app.get_data("result_type")
+    metric = app.get_data("metric")
+
+    app.set_data(
         "n_susceptible",
-        controller.get_data("n")
-        - controller.get_data("n_immune")
-        - controller.get_data("n_infected"),
+        app.get_data("n") - app.get_data("n_immune") - app.get_data("n_infected"),
     )
 
     # n changed "quickly" and the defaults did not reset on the other two first
-    if controller.get_data("n_susceptible") < 0:
-        controller.set_data(
+    if app.get_data("n_susceptible") < 0:
+        app.set_data(
             "n_susceptible",
-            controller.get_data("n")
-            - controller.get_default("n_immune")
-            - controller.get_default("n_infected"),
+            app.get_data("n")
+            - app.get_default("n_immune")
+            - app.get_default("n_infected"),
         )
 
-    assert controller.get_data("n_susceptible") > 0
+    assert app.get_data("n_susceptible") > 0
 
     match (result_type, metric):
         case ("Trajectories", _):
-            model_trajectories(controller)
+            model_trajectories(app)
         case ("Theoretical", "Incident"):
-            model_theoretical_incident(controller)
+            model_theoretical_incident(app)
         case ("Theoretical", "Cumulative"):
-            model_theoretical_cumulative(controller)
+            model_theoretical_cumulative(app)
         case _:
             raise ValueError(f"Unknown results/metric: {result_type}/{metric}")
 
+    app.set_data("results", True)
 
-def model_trajectories(controller):
-    params = sim_params_from_controller(controller)
+
+def model_trajectories(app):
+    params = sim_params_from_app(app)
     sim = _build_sim(params)
-    rng = numpy.random.default_rng(controller.get_data("seed"))
+    rng = numpy.random.default_rng(app.get_data("seed"))
 
     # get one numpy array, representing a timeseries of infections
     # per generation, for each simulation
     simulations = [
-        sim.simulate(rng=child)
-        for child in rng.spawn(controller.get_data("n_simulations"))
+        sim.simulate(rng=child) for child in rng.spawn(app.get_data("n_simulations"))
     ]
 
     # combine those simulations into a dataframe, making trajectories
@@ -64,7 +65,7 @@ def model_trajectories(controller):
     last_gen = traj_data.filter(pl.col("i") > 0).select(pl.col("t").max()).item()
     traj_data = traj_data.filter(pl.col("t") <= last_gen)
 
-    metric = controller.get_data("metric")
+    metric = app.get_data("metric")
     match metric:
         case "Incident":
             # use just incident infections
@@ -80,19 +81,19 @@ def model_trajectories(controller):
     # get peak value by iteration
     peak_traj_data = traj_data.group_by("iter").agg(pl.col("y").max().alias("peak_y"))
 
-    controller.set_data("traj", traj_data)
-    controller.set_data("peak_traj", peak_traj_data)
+    app.set_data("traj", traj_data)
+    app.set_data("peak_traj", peak_traj_data)
 
 
-def model_theoretical_cumulative(controller):
-    assert controller.get_data("result_type") == "Theoretical"
-    assert controller.get_data("metric") == "Cumulative"
+def model_theoretical_cumulative(app):
+    assert app.get_data("result_type") == "Theoretical"
+    assert app.get_data("metric") == "Cumulative"
 
-    params = sim_params_from_controller(controller)
+    params = sim_params_from_app(app)
     sim = _build_sim(params)
-    n_susceptible = controller.get_data("n_susceptible")
-    n_infected = controller.get_data("n_infected")
-    n_simulations = controller.get_data("n_simulations")
+    n_susceptible = app.get_data("n_susceptible")
+    n_infected = app.get_data("n_infected")
+    n_simulations = app.get_data("n_simulations")
 
     # do the final size pmf ---------------------------------------------------
     # additional no. infected
@@ -120,17 +121,17 @@ def model_theoretical_cumulative(controller):
         ]
     ).filter(pl.col("t") > 0)
 
-    controller.set_data("final", final_data)
-    controller.set_data("state", state_data)
+    app.set_data("final", final_data)
+    app.set_data("state", state_data)
 
 
-def model_theoretical_incident(controller):
-    assert controller.get_data("result_type") == "Theoretical"
-    assert controller.get_data("metric") == "Incident"
+def model_theoretical_incident(app):
+    assert app.get_data("result_type") == "Theoretical"
+    assert app.get_data("metric") == "Incident"
 
-    params = sim_params_from_controller(controller)
+    params = sim_params_from_app(app)
     sim = _build_sim(params)
-    n_susceptible = controller.get_data("n_susceptible")
+    n_susceptible = app.get_data("n_susceptible")
 
     state_data = pl.from_dicts(
         [
@@ -146,20 +147,19 @@ def model_theoretical_incident(controller):
         ]
     ).filter(pl.col("t") > 0)
 
-    controller.set_data("state", state_data)
+    app.set_data("state", state_data)
 
 
-def sim_params_from_controller(controller):
+def sim_params_from_app(app):
     out = {}
-    out["model"] = controller.get_data("model")
-    out["n_susceptible"] = controller.get_data("n_susceptible")
-    out["n_infected"] = controller.get_data("n_infected")
-    out["brn"] = controller.get_data("brn")
-    out["n"] = controller.get_data("n")
+    out["model"] = app.get_data("model")
+    out["n_susceptible"] = app.get_data("n_susceptible")
+    out["n_infected"] = app.get_data("n_infected")
+    out["brn"] = app.get_data("brn")
+    out["n"] = app.get_data("n")
     return out
 
 
-@st.cache_resource
 def _build_sim(p: dict) -> reedfrost.ChainBinomial:
     match p["model"]:
         case "Reed-Frost":
@@ -179,3 +179,7 @@ def _build_sim(p: dict) -> reedfrost.ChainBinomial:
             raise ValueError(f"Unknown model: {p['model']}")
 
     return sim_class(s0=p["n_susceptible"], i0=p["n_infected"], params=params)
+
+
+if st.runtime.exists():
+    _build_sim = st.cache_resource(_build_sim)
