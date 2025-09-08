@@ -2,17 +2,7 @@ import streamlit as st
 
 from reedfrost.app.charts import ui_charts
 from reedfrost.app.controller import Controller
-from reedfrost.app.inputs import (
-    input_brn,
-    input_metric,
-    input_model,
-    input_n,
-    input_n_immune,
-    input_n_infected,
-    input_n_simulations,
-    input_result_type,
-    input_seed,
-)
+from reedfrost.app.inputs import inputs
 
 
 def ui(c: Controller):
@@ -22,18 +12,18 @@ def ui(c: Controller):
     st.title("Chain binomial models")
 
     with st.sidebar:
-        input_n(c)
-        input_n_immune(c)
-        input_brn(c)
-        input_model(c)
-        input_result_type(c)
-        input_metric(c)
+        c.place_input("n")
+        c.place_input("n_immune")
+        c.place_input("brn")
+        c.place_input("model")
+        c.place_input("result_type")
+        c.place_input("metric")
 
         st.header("Input parameters")
         with st.expander("Advanced options", expanded=False):
-            input_n_infected(c)
-            input_n_simulations(c)
-            input_seed(c)
+            c.place_input("n_infected")
+            c.place_input("n_simulations")
+            c.place_input("seed")
 
         st.divider()
         st.header("Links")
@@ -47,4 +37,4 @@ def ui(c: Controller):
 
 
 if __name__ == "__main__":
-    Controller(ui).run()
+    Controller(ui=ui, inputs=inputs).run()
