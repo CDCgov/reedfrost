@@ -2,21 +2,25 @@ from reedfrost.app.model import get_results
 
 
 class Controller:
-    def __init__(self, ui, inputs):
+    def __init__(self, app, components):
         self.state = {}
-        self.ui = ui
-        self.inputs = inputs
+        self.app = app
+        self.components = components
 
-        # validate inputs
-        for x in inputs:
-            assert "key" in x and "setter" in x
-            assert callable(x["setter"])
+        # validate components
+        for x in components:
+            # all components have a key
+            assert "key" in x
+            # input components have a setter function
+            if "type" in x and x["type"] == "input":
+                assert "setter" in x
+                assert callable(x["setter"])
 
         # all keys should be unique
-        keys = set(x["key"] for x in inputs)
+        keys = set(x["key"] for x in components)
         assert len(keys) == len(
-            inputs
-        ), f"There are {len(keys)} keys for {len(inputs)} inputs"
+            components
+        ), f"There are {len(keys)} keys for {len(components)} components"
 
     def set(self, key: str, value) -> None:
         self.state[key] = value
@@ -28,17 +32,13 @@ class Controller:
 
         return self.state.get(key, None)
 
-    def place_input(self, key: str):
-        # get the input with the given key
-        item = next(x for x in self.inputs if x["key"] == key)
+    def place(self, key: str):
+        # get the component with the given key
+        item = next(x for x in self.components if x["key"] == key)
 
-        # if the value is a callable, call it with self as argument
-        if callable(item["setter"]):
+        if "type" in item and item["type"] == "input":
             value = item["setter"](self)
-        else:
-            value = item["setter"]
-
-        self.set(key, value)
+            self.set(key, value)
 
     def run(self):
-        self.ui(self)
+        self.app(self)
