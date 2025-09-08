@@ -58,6 +58,10 @@ def set_n_infected(c: Controller) -> int:
         )
 
 
+def selectbox(label, options, value, **kwargs):
+    return st.selectbox(label, options=options, index=options.index(value), **kwargs)
+
+
 # UI components ------------------------------------------------------------------------
 
 # Components each have:
@@ -71,7 +75,7 @@ COMPONENTS = [
         "key": "n",
         "type": "input",
         "setter": lambda c: st.slider(
-            "Population size", min_value=1, max_value=100, step=1, value=10
+            "Population size", min_value=1, max_value=100, step=1, value=c.get("n")
         ),
     },
     {
@@ -81,7 +85,7 @@ COMPONENTS = [
             "Proportion initially immune",
             # values are from 0 to N-1, leaving space for at least 1 infected
             options=range(0, c.get("n")),
-            value=0,
+            value=c.get("n_immune"),
             format_func=lambda x: f"{x / c.get('n'):.0%}",
         ),
     },
@@ -93,45 +97,51 @@ COMPONENTS = [
             min_value=0.0,
             max_value=min(15.0, float(c.get("n"))),
             step=0.1,
-            value=min(1.5, float(c.get("n"))),
+            value=min(c.get("brn"), float(c.get("n"))),
             format="%.1f",
         ),
     },
     {
         "key": "model",
         "type": "input",
-        "setter": lambda c: st.selectbox(
-            "Model",
-            options=["Reed-Frost", "Enko", "Greenwood"],
-            index=0,
+        "setter": lambda c: selectbox(
+            "Model", options=["Reed-Frost", "Enko", "Greenwood"], value=c.get("model")
         ),
     },
     {
         "key": "result_type",
         "type": "input",
-        "setter": lambda c: st.selectbox(
-            "Results type", options=["Trajectories", "Theoretical"], index=0
+        "setter": lambda c: selectbox(
+            "Results type",
+            options=["Trajectories", "Theoretical"],
+            value=c.get("result_type"),
         ),
     },
     {
         "key": "metric",
         "type": "input",
-        "setter": lambda c: st.selectbox(
-            "Infections metric", options=["Cumulative", "Incident"], index=0
+        "setter": lambda c: selectbox(
+            "Infections metric",
+            options=["Cumulative", "Incident"],
+            value=c.get("metric"),
         ),
     },
     {
         "key": "n_simulations",
         "type": "input",
         "setter": lambda c: st.slider(
-            "No. simulations", min_value=5, max_value=250, step=1, value=100
+            "No. simulations",
+            min_value=5,
+            max_value=250,
+            step=1,
+            value=c.get("n_simulations"),
         ),
     },
     {
         "key": "seed",
         "type": "input",
         "setter": lambda c: st.number_input(
-            "Random seed", min_value=0, max_value=2**32 - 1, step=1, value=42
+            "Random seed", min_value=0, max_value=2**32 - 1, step=1, value=c.get("seed")
         ),
     },
     {"type": "input", "key": "n_infected", "setter": set_n_infected},

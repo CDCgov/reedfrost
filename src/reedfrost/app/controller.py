@@ -2,11 +2,17 @@ from typing import Callable
 
 
 class Controller:
-    def __init__(self, app: Callable, components: list[dict], getters: list[dict]):
+    def __init__(
+        self,
+        app: Callable,
+        components: list[dict],
+        getters: list[dict],
+        initial_state: dict | None = None,
+    ):
         self.app = app
         self.components = components
         self.getters = getters
-        self.state = {}
+        self.state = initial_state or {}
 
         # validate components
         for x in components:

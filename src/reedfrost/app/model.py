@@ -50,6 +50,18 @@ GETTERS = [
     {"key": "results", "getter": get_results},
 ]
 
+INITIAL_STATE = {
+    "n": 10,
+    "n_immune": 0,
+    "n_infected": 1,
+    "brn": 1.5,  # note this is clamped by n
+    "model": "Reed-Frost",
+    "result_type": "Trajectories",
+    "metric": "Cumulative",
+    "n_simulations": 100,
+    "seed": 42,
+}
+
 
 def model_trajectories(params: dict) -> dict:
     sim = _build_sim(**params)
