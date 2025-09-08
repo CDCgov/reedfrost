@@ -4,25 +4,51 @@ import polars as pl
 import streamlit as st
 
 import reedfrost
+from reedfrost.app import Controller
 
 
-def get_results(params) -> dict:
-    # derive parameters
-    n_susceptible = params["n"] - params["n_immune"] - params["n_infected"]
+def get_n_suceptible(c: Controller) -> int:
+    n = c.get("n")
+    n_immune = c.get("n_immune")
+    n_infected = c.get("n_infected")
+    assert isinstance(n, int) and n >= 1
+    assert isinstance(n_immune, int) and 0 <= n_immune < n
+    assert isinstance(n_infected, int) and 1 <= n_infected <= n
+    n_susceptible = n - n_immune - n_infected
     assert n_susceptible > 0
-    params["n_susceptible"] = n_susceptible
+    return n_susceptible
 
-    match (params["result_type"], params["metric"]):
+
+def get_results(c: Controller) -> dict:
+    params = {
+        key: c.get(key)
+        for key in [
+            "seed",
+            "n_simulations",
+            "n_susceptible",
+            "n_infected",
+            "model",
+            "metric",
+            "brn",
+            "n",
+        ]
+    }
+
+    match (c.get("result_type"), c.get("metric")):
         case ("Trajectories", _):
             return model_trajectories(params)
         case ("Theoretical", "Incident"):
             return model_theoretical_incident(params)
         case ("Theoretical", "Cumulative"):
             return model_theoretical_cumulative(params)
-        case _:
-            raise ValueError(
-                f"Unknown results/metric: {params['result_type']}/{params['metric']}"
-            )
+        case (result_type, metric):
+            raise ValueError(f"Unknown results/metric: {result_type}/{metric}")
+
+
+GETTERS = [
+    {"key": "n_susceptible", "getter": get_n_suceptible},
+    {"key": "results", "getter": get_results},
+]
 
 
 def model_trajectories(params: dict) -> dict:

@@ -5,6 +5,7 @@ from reedfrost.app.controller import Controller
 
 
 def app(c: Controller):
+    """Run a streamlit app"""
     st.set_page_config(
         page_title="Chain binomial models", page_icon="🧮", layout="wide"
     )
@@ -35,6 +36,7 @@ def app(c: Controller):
     c.place("charts")
 
 
+# Special purpose component functions ---------------------------------------------------
 def set_n_infected(c: Controller) -> int:
     # need special handling for the case where everyone is immune but 1,
     # because streamlit sliders must have a range
@@ -56,17 +58,25 @@ def set_n_infected(c: Controller) -> int:
         )
 
 
-components = [
+# UI components ------------------------------------------------------------------------
+
+# Components each have:
+# - `key`: unique identifier
+# - `type`: "input" or "output"
+# - if `type` is "input", a `setter` function that takes a Controller and returns a
+#   value to set for that key
+# - if `type` is "output", a `func` function that takes a Controller and produces output
+COMPONENTS = [
     {
-        "type": "input",
         "key": "n",
+        "type": "input",
         "setter": lambda c: st.slider(
             "Population size", min_value=1, max_value=100, step=1, value=10
         ),
     },
     {
-        "type": "input",
         "key": "n_immune",
+        "type": "input",
         "setter": lambda c: st.select_slider(
             "Proportion initially immune",
             # values are from 0 to N-1, leaving space for at least 1 infected
@@ -76,8 +86,8 @@ components = [
         ),
     },
     {
-        "type": "input",
         "key": "brn",
+        "type": "input",
         "setter": lambda c: st.slider(
             "Basic reproduction number",
             min_value=0.0,
@@ -88,8 +98,8 @@ components = [
         ),
     },
     {
-        "type": "input",
         "key": "model",
+        "type": "input",
         "setter": lambda c: st.selectbox(
             "Model",
             options=["Reed-Frost", "Enko", "Greenwood"],
@@ -97,33 +107,33 @@ components = [
         ),
     },
     {
-        "type": "input",
         "key": "result_type",
+        "type": "input",
         "setter": lambda c: st.selectbox(
             "Results type", options=["Trajectories", "Theoretical"], index=0
         ),
     },
     {
-        "type": "input",
         "key": "metric",
+        "type": "input",
         "setter": lambda c: st.selectbox(
             "Infections metric", options=["Cumulative", "Incident"], index=0
         ),
     },
     {
-        "type": "input",
         "key": "n_simulations",
+        "type": "input",
         "setter": lambda c: st.slider(
             "No. simulations", min_value=5, max_value=250, step=1, value=100
         ),
     },
     {
-        "type": "input",
         "key": "seed",
+        "type": "input",
         "setter": lambda c: st.number_input(
             "Random seed", min_value=0, max_value=2**32 - 1, step=1, value=42
         ),
     },
     {"type": "input", "key": "n_infected", "setter": set_n_infected},
-    {"key": "charts", "func": ui_charts},
+    {"key": "charts", "type": "output", "func": ui_charts},
 ]
