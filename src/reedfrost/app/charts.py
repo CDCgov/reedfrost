@@ -7,24 +7,24 @@ from streamlit.delta_generator import DeltaGenerator
 from reedfrost.app.controller import Controller
 
 
-def ui_charts(controller: Controller) -> None:
+def ui_charts(c: Controller) -> None:
     # display initial conditions ----------------------------------------------
     col1, col2, col3, _ = st.columns([1, 1, 1, 3])
-    col1.metric("Initial susceptible", controller.get("n_susceptible"))
-    col2.metric("Initial immune", controller.get("n_immune"))
-    col3.metric("Initial infected", controller.get("n_infected"))
+    col1.metric("Initial susceptible", c.get("n_susceptible"))
+    col2.metric("Initial immune", c.get("n_immune"))
+    col3.metric("Initial infected", c.get("n_infected"))
 
     # results -----------------------------------------------------------------
     container = st.empty()
     container.text("Calculating...")
 
-    results = controller.get("results")
+    results = c.get("results")
 
     if results is not None:
-        metric = controller.get("metric")
+        metric = c.get("metric")
         assert isinstance(metric, str)
 
-        match result_type := controller.get("result_type"):
+        match result_type := c.get("result_type"):
             case "Trajectories":
                 trajectories_chart(container=container, results=results, metric=metric)
             case "Theoretical":
