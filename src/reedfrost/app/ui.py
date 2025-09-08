@@ -32,7 +32,7 @@ def app(c: Controller):
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
-    ui_charts(c)
+    c.place("charts")
 
 
 def set_n_infected(c: Controller) -> int:
@@ -125,4 +125,5 @@ components = [
         ),
     },
     {"type": "input", "key": "n_infected", "setter": set_n_infected},
+    {"key": "charts", "func": ui_charts},
 ]
