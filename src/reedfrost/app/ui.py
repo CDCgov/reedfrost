@@ -44,7 +44,7 @@ def n_immune(c: Controller, label: str, **kwargs) -> int:
         label,
         # values are from 0 to N-1, leaving space for at least 1 infected
         options=range(0, n),
-        format_func=lambda x: f"{x / c.get('n'):.0%}",
+        format_func=lambda x: f"{x / n:.0%}",
         **kwargs,
     )
 
