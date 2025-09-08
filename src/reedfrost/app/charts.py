@@ -4,41 +4,47 @@ import polars as pl
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
+from reedfrost.app.controller import Controller
 
-def view(params: dict, results: dict) -> None:
+
+def ui_charts(controller: Controller) -> None:
     # display initial conditions ----------------------------------------------
     col1, col2, col3, _ = st.columns([1, 1, 1, 3])
-    col1.metric("Initial susceptible", params["n_susceptible"])
-    col2.metric("Initial immune", params["n_immune"])
-    col3.metric("Initial infected", params["n_infected"])
+    col1.metric("Initial susceptible", controller.get("n_susceptible"))
+    col2.metric("Initial immune", controller.get("n_immune"))
+    col3.metric("Initial infected", controller.get("n_infected"))
 
     # results -----------------------------------------------------------------
-    view_c = st.empty()
-    view_c.text("Calculating...")
+    container = st.empty()
+    container.text("Calculating...")
 
-    if results is None:
-        pass
-    else:
-        match params["result_type"]:
+    results = controller.get("results")
+
+    if results is not None:
+        metric = controller.get("metric")
+        assert isinstance(metric, str)
+
+        match result_type := controller.get("result_type"):
             case "Trajectories":
-                trajectories_chart(c=view_c, results=results, params=params)
+                trajectories_chart(container=container, results=results, metric=metric)
             case "Theoretical":
-                theoretical_chart(c=view_c, results=results, params=params)
+                theoretical_chart(container=container, results=results, metric=metric)
             case _:
-                raise ValueError(f"Unknown result type: {params['result_type']}")
+                raise ValueError(f"Unknown result type: {result_type}")
 
 
 def theoretical_chart(
-    c: DeltaGenerator,
+    container: DeltaGenerator,
     results: dict,
-    params: dict,
+    metric: str,
     min_bins: int = 10,
     max_bins: int = 20,
     prob_diff_eps: float = 0.005,
     prob_bins: int = 10,
 ):
-    match params["metric"]:
+    match metric:
         case "Incident":
+            # nesting "state" under results is confusing
             state_data = results["state"].pipe(
                 _bin_data,
                 "Incident",
@@ -58,7 +64,7 @@ def theoretical_chart(
                     alt.Y(
                         "Incident:O",
                         sort=state_data["Incident"].to_list(),
-                        title=f"{params['metric']} no. infected",
+                        title=f"{metric} no. infected",
                     ),
                     color=alt.condition(
                         alt.datum.prob == 0,
@@ -68,7 +74,7 @@ def theoretical_chart(
                 )
             )
 
-            c.altair_chart(state_chart)
+            container.altair_chart(state_chart)
         case "Cumulative":
             final_data = results["final"].pipe(
                 _bin_data,
@@ -117,15 +123,15 @@ def theoretical_chart(
                     alt.X("n_expected"),
                 )
             )
-            c.altair_chart(state_chart | final_chart)
+            container.altair_chart(state_chart | final_chart)
         case _:
-            raise ValueError(f"Unknown metric: {params['metric']}")
+            raise ValueError(f"Unknown metric: {metric}")
 
 
 def trajectories_chart(
-    c: DeltaGenerator,
-    params: dict,
+    container: DeltaGenerator,
     results: dict,
+    metric: str,
     opacity: float = 1.0,
     stroke_width: float = 0.5,
     jitter_range: float = 0.8,
@@ -178,7 +184,7 @@ def trajectories_chart(
             alt.X("t", title="Generation", axis=alt.Axis(tickCount=last_gen + 1)),
             alt.Y(
                 "y_jitter",
-                title=f"{params['metric']} no. infected",
+                title=f"{metric} no. infected",
                 axis=alt.Axis(tickCount=max_y),
                 scale=alt.Scale(domain=[0, max_y + 0.5]),
             ),
@@ -210,14 +216,15 @@ def trajectories_chart(
     hist_chart = (
         alt.Chart(hist_data)
         .properties(
-            title=f"Maximum {params['metric']} distribution", height=chart_height
+            title=f"Maximum {metric} distribution",
+            height=chart_height,
         )
         .mark_bar()
         .encode(
             alt.X("count", title="No. simulations"),
             alt.Y(
                 "peak_y:N",
-                title=f"{params['metric']} no. infected",
+                title=f"{metric} no. infected",
                 sort=hist_data["peak_y"].to_list(),
             ),
             alt.Color("is_selected", scale=alt.Scale(range=my_colors), legend=None),
@@ -228,7 +235,7 @@ def trajectories_chart(
         )
     )
 
-    col1, col2 = c.columns([1, 1])
+    col1, col2 = container.columns([1, 1])
     col1.altair_chart(line_chart)
     col2.altair_chart(hist_chart, on_select="rerun", key="selection")
 

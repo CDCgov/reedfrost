@@ -1,32 +1,39 @@
 import streamlit as st
 
-from reedfrost.app.input import register_inputs
-from reedfrost.app.model import get_results
-from reedfrost.app.view import view
+from reedfrost.app.charts import ui_charts
+from reedfrost.app.controller import Controller
+from reedfrost.app.inputs import (
+    input_brn,
+    input_metric,
+    input_model,
+    input_n,
+    input_n_immune,
+    input_n_infected,
+    input_n_simulations,
+    input_result_type,
+    input_seed,
+)
 
 
-def run_app():
-    inputter = register_inputs()
-
-    # set up app input layout and collect input values ------------------------
+def ui(c: Controller):
     st.set_page_config(
         page_title="Chain binomial models", page_icon="🧮", layout="wide"
     )
     st.title("Chain binomial models")
 
     with st.sidebar:
-        inputter.place_component("n")
-        inputter.place_component("n_immune")
-        inputter.place_component("brn")
-        inputter.place_component("model")
-        inputter.place_component("result_type")
-        inputter.place_component("metric")
+        input_n(c)
+        input_n_immune(c)
+        input_brn(c)
+        input_model(c)
+        input_result_type(c)
+        input_metric(c)
 
         st.header("Input parameters")
         with st.expander("Advanced options", expanded=False):
-            inputter.place_component("n_infected")
-            inputter.place_component("n_simulations")
-            inputter.place_component("seed")
+            input_n_infected(c)
+            input_n_simulations(c)
+            input_seed(c)
 
         st.divider()
         st.header("Links")
@@ -36,12 +43,8 @@ def run_app():
             "https://cdcgov.github.io/reedfrost/", label="documentation", icon="📝"
         )
 
-    # run the simulations/computations ----------------------------------------
-    results = get_results(inputter.inputs)
-
-    # render the results ------------------------------------------------------
-    view(inputter.inputs, results)
+    ui_charts(c)
 
 
 if __name__ == "__main__":
-    run_app()
+    Controller(ui).run()
