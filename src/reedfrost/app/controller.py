@@ -18,18 +18,9 @@ class Controller:
         for x in components:
             assert isinstance(x, dict)
             # all components have a key
-            assert {"key", "type"}.issubset(x.keys())
-
-            # input components have a setter function
-            match x["type"]:
-                case "input":
-                    assert "setter" in x
-                    assert callable(x["setter"])
-                case "output":
-                    assert "func" in x
-                    assert callable(x["func"])
-                case _:
-                    raise RuntimeError(f"Unknown component type: {x['type']}")
+            assert {"key", "type", "func"}.issubset(x.keys())
+            assert x["type"] in {"input", "special_input", "output"}
+            assert callable(x["func"])
 
         # all keys should be unique
         keys = set(x["key"] for x in components)
@@ -54,18 +45,24 @@ class Controller:
             assert key in self.state or key == "results", f"Unknown key: {key}"
             return self.state[key]
 
-    def place(self, key: str):
+    def place(self, key: str) -> None:
         # get the component with the given key
         item = self._get_by_key(self.components, key)
+        assert item is not None
 
-        match item:
-            case {"type": "input", "setter": setter}:
-                value = setter(self)
-                self.set(key, value)
-            case {"type": "output", "func": func}:
-                func(self)
-            case _:
-                raise RuntimeError(f"Unknown component: {item}")
+        kwargs = {k: v for k, v in item.items() if k not in {"key", "type", "func"}}
+
+        if item["type"] in {"input", "special_input"}:
+            args = [self] if item["type"] == "special_input" else []
+            assert "value" not in kwargs
+            kwargs["value"] = self.get(key)
+
+            value = item["func"](*args, **kwargs)
+            self.set(key, value)
+        elif item["type"] == "output":
+            item["func"](self)
+        else:
+            raise RuntimeError(f"Unknown component type: {item['type']}")
 
     def run(self):
         self.app(self)
