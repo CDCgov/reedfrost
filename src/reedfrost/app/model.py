@@ -50,11 +50,11 @@ GETTERS = [
     {"key": "results", "getter": get_results},
 ]
 
-INITIAL_STATE = {
+INITIAL_DATA = {
     "n": 10,
     "n_immune": 0,
     "n_infected": 1,
-    "brn": 1.5,  # note this is clamped by n
+    "brn": 1.5,
     "model": "Reed-Frost",
     "result_type": "Trajectories",
     "metric": "Cumulative",

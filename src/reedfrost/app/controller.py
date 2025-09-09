@@ -1,5 +1,7 @@
 from typing import Callable
 
+import streamlit as st
+
 
 class Controller:
     def __init__(
@@ -7,12 +9,15 @@ class Controller:
         app: Callable,
         components: list[dict],
         getters: list[dict],
-        initial_state: dict | None = None,
+        initial_data: dict | None = None,
     ):
         self.app = app
         self.components = components
         self.getters = getters
-        self.state = initial_state or {}
+
+        if initial_data is not None:
+            for key, value in initial_data.items():
+                self.set(key, value, overwrite=False)
 
         # validate components
         for x in components:
@@ -34,31 +39,30 @@ class Controller:
             assert {"key", "getter"}.issubset(x.keys())
             assert callable(x["getter"])
 
-    def set(self, key: str, value) -> None:
-        self.state[key] = value
+    def set(self, key: str, value, overwrite: bool = True) -> None:
+        if overwrite or key not in st.session_state:
+            st.session_state[key] = value
 
     def get(self, key: str):
         # if there is a getter for this key, use it
         if getter := self._get_by_key(self.getters, key):
             return getter["getter"](self)
         else:
-            assert key in self.state or key == "results", f"Unknown key: {key}"
-            return self.state[key]
+            return st.session_state[key]
+
+    def ensure(self, key: str) -> None:
+        self.set(key, self.get(key))
 
     def place(self, key: str) -> None:
         # get the component with the given key
         item = self._get_by_key(self.components, key)
         assert item is not None
 
-        kwargs = {k: v for k, v in item.items() if k not in {"key", "type", "func"}}
+        kwargs = {k: v for k, v in item.items() if k not in {"type", "func"}}
 
         if item["type"] in {"input", "special_input"}:
             args = [self] if item["type"] == "special_input" else []
-            assert "value" not in kwargs
-            kwargs["value"] = self.get(key)
-
-            value = item["func"](*args, **kwargs)
-            self.set(key, value)
+            item["func"](*args, **kwargs)
         elif item["type"] == "output":
             item["func"](self)
         else:
