@@ -31,6 +31,7 @@ def get_results(c: Controller) -> dict:
             "metric",
             "brn",
             "n",
+            "result_type",
         ]
     }
 
