@@ -6,6 +6,7 @@ from reedfrost.app.controller import Controller
 
 def app(c: Controller):
     """Run a streamlit app"""
+
     st.set_page_config(
         page_title="Chain binomial models", page_icon="🧮", layout="wide"
     )
@@ -36,104 +37,126 @@ def app(c: Controller):
     c.place("charts")
 
 
-# Special purpose component functions ---------------------------------------------------
-def set_n_infected(c: Controller) -> int:
+# Special purpose UI component functions -------------------------------------------------
+def n_immune(c: Controller, key: str, label: str, **kwargs):
+    # ensure that n_immune does not change when `options` changes
+    # see <https://docs.streamlit.io/develop/concepts/architecture/widget-behavior#retain-statefulness-when-changing-a-widgets-parameters>
+    c.ensure(key)
+
+    n = c.get("n")
+    assert isinstance(n, int) and n >= 1
+
+    st.select_slider(
+        label,
+        key=key,
+        # values are from 0 to N-1, leaving space for at least 1 infected
+        options=range(0, n),
+        format_func=lambda x: f"{x / n:.0%}",
+        **kwargs,
+    )
+
+
+def n_infected(c: Controller, key: str, label: str, **kwargs):
     # need special handling for the case where everyone is immune but 1,
     # because streamlit sliders must have a range
     n = c.get("n")
     n_immune = c.get("n_immune")
+
     assert isinstance(n, int) and n >= 1
     assert isinstance(n_immune, int) and 0 <= n_immune < n
 
-    if n - n_immune == 1:
-        st.text("No. initially infected: 1")
-        return 1
+    max_value = n - n_immune
+
+    help = f"No. infected is at most total no. ({n}) minus no. immune ({n_immune}) = {max_value}"
+
+    if max_value == 1:
+        st.text(f"{label}: 1", help=help)
+        c.set(key, 1)
     else:
-        return st.slider(
-            "No. initially infected",
-            min_value=1,
-            max_value=n - n_immune,
-            step=1,
-            value=1,
-        )
+        st.slider(label, key=key, max_value=max_value, help=help, **kwargs)
+
+
+def brn(c: Controller, key: str, label: str, max_value: float, **kwargs):
+    # ensure that R0 does not exceed N
+    n = float(c.get("n"))
+    c.set(key, min(c.get(key), n))
+    st.slider(label, key=key, max_value=min(max_value, n), **kwargs)
 
 
 # UI components ------------------------------------------------------------------------
 
-# Components each have:
-# - `key`: unique identifier
-# - `type`: "input" or "output"
-# - if `type` is "input", a `setter` function that takes a Controller and returns a
-#   value to set for that key
-# - if `type` is "output", a `func` function that takes a Controller and produces output
 COMPONENTS = [
     {
         "key": "n",
         "type": "input",
-        "setter": lambda c: st.slider(
-            "Population size", min_value=1, max_value=100, step=1, value=10
-        ),
+        "func": st.slider,
+        "label": "Population size",
+        "min_value": 3,
+        "max_value": 100,
+        "step": 1,
     },
     {
         "key": "n_immune",
-        "type": "input",
-        "setter": lambda c: st.select_slider(
-            "Proportion initially immune",
-            # values are from 0 to N-1, leaving space for at least 1 infected
-            options=range(0, c.get("n")),
-            value=0,
-            format_func=lambda x: f"{x / c.get('n'):.0%}",
-        ),
+        "type": "special_input",
+        "label": "Proportion initially immune",
+        "func": n_immune,
     },
     {
         "key": "brn",
-        "type": "input",
-        "setter": lambda c: st.slider(
-            "Basic reproduction number",
-            min_value=0.0,
-            max_value=min(15.0, float(c.get("n"))),
-            step=0.1,
-            value=min(1.5, float(c.get("n"))),
-            format="%.1f",
-        ),
+        "type": "special_input",
+        "func": brn,
+        "label": "Basic reproduction number",
+        "min_value": 0.0,
+        "max_value": 15.0,
+        "step": 0.1,
+        "format": "%.1f",
     },
     {
         "key": "model",
         "type": "input",
-        "setter": lambda c: st.selectbox(
-            "Model",
-            options=["Reed-Frost", "Enko", "Greenwood"],
-            index=0,
-        ),
+        "func": st.radio,
+        "label": "Model",
+        "options": ["Reed-Frost", "Enko", "Greenwood"],
     },
     {
         "key": "result_type",
         "type": "input",
-        "setter": lambda c: st.selectbox(
-            "Results type", options=["Trajectories", "Theoretical"], index=0
-        ),
+        "func": st.radio,
+        "label": "Results type",
+        "options": ["Trajectories", "Theoretical"],
     },
     {
         "key": "metric",
         "type": "input",
-        "setter": lambda c: st.selectbox(
-            "Infections metric", options=["Cumulative", "Incident"], index=0
-        ),
+        "func": st.radio,
+        "label": "Infections metric",
+        "options": ["Cumulative", "Incident"],
     },
     {
         "key": "n_simulations",
         "type": "input",
-        "setter": lambda c: st.slider(
-            "No. simulations", min_value=5, max_value=250, step=1, value=100
-        ),
+        "func": st.slider,
+        "label": "No. simulations",
+        "min_value": 5,
+        "max_value": 250,
+        "step": 1,
     },
     {
         "key": "seed",
         "type": "input",
-        "setter": lambda c: st.number_input(
-            "Random seed", min_value=0, max_value=2**32 - 1, step=1, value=42
-        ),
+        "func": st.number_input,
+        "label": "Random seed",
+        "min_value": 0,
+        "max_value": 2**32 - 1,
+        "step": 1,
     },
-    {"type": "input", "key": "n_infected", "setter": set_n_infected},
+    {
+        "key": "n_infected",
+        "type": "special_input",
+        "func": n_infected,
+        "label": "No. initially infected",
+        "min_value": 1,
+        "step": 1,
+    },
     {"key": "charts", "type": "output", "func": ui_charts},
 ]

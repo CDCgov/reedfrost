@@ -1,29 +1,31 @@
 from typing import Callable
 
+import streamlit as st
+
 
 class Controller:
-    def __init__(self, app: Callable, components: list[dict], getters: list[dict]):
+    def __init__(
+        self,
+        app: Callable,
+        components: list[dict],
+        getters: list[dict],
+        initial_data: dict | None = None,
+    ):
         self.app = app
         self.components = components
         self.getters = getters
-        self.state = {}
+
+        if initial_data is not None:
+            for key, value in initial_data.items():
+                self.set(key, value, overwrite=False)
 
         # validate components
         for x in components:
             assert isinstance(x, dict)
             # all components have a key
-            assert {"key", "type"}.issubset(x.keys())
-
-            # input components have a setter function
-            match x["type"]:
-                case "input":
-                    assert "setter" in x
-                    assert callable(x["setter"])
-                case "output":
-                    assert "func" in x
-                    assert callable(x["func"])
-                case _:
-                    raise RuntimeError(f"Unknown component type: {x['type']}")
+            assert {"key", "type", "func"}.issubset(x.keys())
+            assert x["type"] in {"input", "special_input", "output"}
+            assert callable(x["func"])
 
         # all keys should be unique
         keys = set(x["key"] for x in components)
@@ -37,29 +39,34 @@ class Controller:
             assert {"key", "getter"}.issubset(x.keys())
             assert callable(x["getter"])
 
-    def set(self, key: str, value) -> None:
-        self.state[key] = value
+    def set(self, key: str, value, overwrite: bool = True) -> None:
+        if overwrite or key not in st.session_state:
+            st.session_state[key] = value
 
     def get(self, key: str):
         # if there is a getter for this key, use it
         if getter := self._get_by_key(self.getters, key):
             return getter["getter"](self)
         else:
-            assert key in self.state or key == "results", f"Unknown key: {key}"
-            return self.state[key]
+            return st.session_state[key]
 
-    def place(self, key: str):
+    def ensure(self, key: str) -> None:
+        self.set(key, self.get(key))
+
+    def place(self, key: str) -> None:
         # get the component with the given key
         item = self._get_by_key(self.components, key)
+        assert item is not None
 
-        match item:
-            case {"type": "input", "setter": setter}:
-                value = setter(self)
-                self.set(key, value)
-            case {"type": "output", "func": func}:
-                func(self)
-            case _:
-                raise RuntimeError(f"Unknown component: {item}")
+        kwargs = {k: v for k, v in item.items() if k not in {"type", "func"}}
+
+        if item["type"] in {"input", "special_input"}:
+            args = [self] if item["type"] == "special_input" else []
+            item["func"](*args, **kwargs)
+        elif item["type"] == "output":
+            item["func"](self)
+        else:
+            raise RuntimeError(f"Unknown component type: {item['type']}")
 
     def run(self):
         self.app(self)

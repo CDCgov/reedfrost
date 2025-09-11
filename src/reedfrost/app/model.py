@@ -4,7 +4,7 @@ import polars as pl
 import streamlit as st
 
 import reedfrost
-from reedfrost.app import Controller
+from reedfrost.app.controller import Controller
 
 
 def get_n_suceptible(c: Controller) -> int:
@@ -31,6 +31,7 @@ def get_results(c: Controller) -> dict:
             "metric",
             "brn",
             "n",
+            "result_type",
         ]
     }
 
@@ -49,6 +50,18 @@ GETTERS = [
     {"key": "n_susceptible", "getter": get_n_suceptible},
     {"key": "results", "getter": get_results},
 ]
+
+INITIAL_DATA = {
+    "n": 10,
+    "n_immune": 0,
+    "n_infected": 1,
+    "brn": 1.5,
+    "model": "Reed-Frost",
+    "result_type": "Trajectories",
+    "metric": "Cumulative",
+    "n_simulations": 100,
+    "seed": 42,
+}
 
 
 def model_trajectories(params: dict) -> dict:
