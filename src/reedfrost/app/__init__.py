@@ -3,9 +3,9 @@ from reedfrost.app.model import GETTERS, INITIAL_DATA
 from reedfrost.app.ui import COMPONENTS, app
 
 
-def main():
+def main(initial_data=INITIAL_DATA):
     Controller(
-        app=app, components=COMPONENTS, getters=GETTERS, initial_data=INITIAL_DATA
+        app=app, components=COMPONENTS, getters=GETTERS, initial_data=initial_data
     ).run()
 
 

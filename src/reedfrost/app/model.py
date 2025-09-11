@@ -4,7 +4,7 @@ import polars as pl
 import streamlit as st
 
 import reedfrost
-from reedfrost.app import Controller
+from reedfrost.app.controller import Controller
 
 
 def get_n_suceptible(c: Controller) -> int:
